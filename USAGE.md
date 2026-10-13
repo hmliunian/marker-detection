@@ -70,10 +70,26 @@ action 是 `camera_T_rig @ rig_T_target` 的平移，单位米，表达在**头�
 
 ```bash
 just analyze /path/to/episode.mcap artifacts/experiment \
-  --settings configs/screening.example.json --video-backend auto --gpu 0
+  --config configs/screening.example.json --video-backend auto --gpu 0
 ```
 
-复制 [screening.example.json](configs/screening.example.json) 调整 `activity`、`quality`、`pose` 三部分；未列字段沿用默认值。完整生效参数随每次结果保存。另可用 `--geometry /path/to/UMI.json` 指定几何，`--sidecar /path/to/collection.json` 指定旧格式采集 JSON。
+复制 [screening.example.json](configs/screening.example.json) 调整 `activity`、`quality`、`pose` 三部分；未列字段沿用默认值。`--settings` 与 `--config` 等价，旧命令仍可使用。完整生效参数随每次结果保存。另可用 `--geometry /path/to/UMI.json` 指定几何，`--sidecar /path/to/collection.json` 指定旧格式采集 JSON。
+
+仅配置缺失与覆盖率时，JSON 可以只包含以下内容：
+
+```json
+{
+  "quality": {
+    "max_missing_frame_ratio": 0.1,
+    "min_coverage": 0.9,
+    "max_gap_s": 0.5
+  }
+}
+```
+
+`max_missing_frame_ratio` 是最大缺失帧比例，`0.1` 表示最多 10%，范围为 `[0, 1]`；省略或设为 `null` 不额外限制。这里的缺失帧包含没有观测和未通过质量检查的帧，计算为 `(总帧数 - 有效帧数) / 总帧数`。它与帧覆盖率互补；两项同时配置时须同时满足，以更严格的限制为准。`min_coverage` 还检查按时长加权的覆盖率，`max_gap_s` 单独限制最长连续无效时长（秒），等于阈值允许通过。
+
+上述配置须显式传给 `--config` 才会加载；修改后使用新输出目录重新分析。结果的 `summary.missing_frames`、`summary.missing_frame_ratio`、`coverage` 和 `time_coverage` 可用于核对实际指标，`analysis.json` 的 `config.quality` 保存生效配置。空轨迹的缺失比例为 `null`，不会因此成为合格数据。
 
 | 参数 | 初始值与含义 |
 | --- | --- |
@@ -82,6 +98,7 @@ just analyze /path/to/episode.mcap artifacts/experiment \
 | 触觉 | 单指 25 点力向量模长和达到 `0.5` 原始单位，持续 `0.1 s`；零触觉不证明闲置。 |
 | 最长连续缺失 | `0.5 s`，包含首尾缺失，末帧按正时间间隔中位数估计持续时间。 |
 | 最低覆盖率 | `90%`，帧数比例和时长比例都检查。 |
+| 最大缺失帧比例 | `null`，默认不额外限制；可通过 `quality.max_missing_frame_ratio` 配置，例如 `0.1` 表示 10%。 |
 | 最大异常帧 | `0`；保留原始候选中的跳变检查，过滤掉跳点不会自动使 episode 通过。 |
 | 相机相对运动门控 | `1.5 m/s`、`360°/s`，沿用参考起点。 |
 | 重投影/双目同步 | `1 px` / `5 ms`，沿用参考配置。 |

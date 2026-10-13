@@ -2,7 +2,7 @@
 
 from dataclasses import asdict, dataclass
 from math import isfinite, sqrt
-from numbers import Integral
+from numbers import Integral, Real
 from statistics import median
 
 
@@ -13,6 +13,8 @@ class QualityConfig:
     Speed follows tinynav's 1.5 m/s camera-relative starting threshold.
     0.5 s missing and 90% coverage are explicit trial values. Every anomaly
     rejects by default; acceleration is measured but has no arbitrary gate.
+    Missing-frame ratio uses the same quality-valid mask as coverage; its
+    optional upper limit is disabled by default for existing configurations.
     """
 
     max_speed_m_s: float = 1.5
@@ -21,14 +23,19 @@ class QualityConfig:
     max_anomalous_frames: int = 0
     min_valid_frames: int = 3
     max_acceleration_m_s2: float | None = None
+    max_missing_frame_ratio: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("max_speed_m_s", "max_gap_s"):
             value = getattr(self, name)
             if not isfinite(value) or value < 0:
                 raise ValueError(f"{name} must be finite and nonnegative")
-        if not isfinite(self.min_coverage) or not 0 <= self.min_coverage <= 1:
-            raise ValueError("min_coverage must be a fraction in [0, 1]")
+        for name in ("min_coverage", "max_missing_frame_ratio"):
+            value = getattr(self, name)
+            if name == "max_missing_frame_ratio" and value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real) or not isfinite(value) or not 0 <= value <= 1:
+                raise ValueError(f"{name} must be a fraction in [0, 1]")
         if not isinstance(self.max_anomalous_frames, int) or self.max_anomalous_frames < 0:
             raise ValueError("max_anomalous_frames must be a nonnegative integer")
         if not isinstance(self.min_valid_frames, int) or self.min_valid_frames < 2:
@@ -106,8 +113,10 @@ def evaluate_trajectory(frames: list[dict], config: QualityConfig | None = None)
     frame is assigned the median positive frame interval. Thus leading and
     trailing gaps, including a single missing last frame, are counted.
     ``coverage`` counts frames; ``time_coverage`` weights their durations.
-    Both must pass the coverage threshold. Invalid ordering is rejected,
-    never hidden by re-sorting. The time_s display field is not used.
+    Both must pass the coverage threshold. ``missing_frame_ratio`` counts
+    all frames without a quality-valid action, including rejected poses;
+    it is null for an empty trajectory. Invalid ordering is rejected, never
+    hidden by re-sorting. The time_s display field is not used.
     """
     config = config or QualityConfig()
     timestamps: list[int | None] = []
@@ -260,6 +269,8 @@ def evaluate_trajectory(frames: list[dict], config: QualityConfig | None = None)
     raw_gaps = _gap_intervals(frames, [p is not None for p in raw], durations)
     count = len(frames)
     valid_count = sum(valid)
+    missing_count = count - valid_count
+    missing_frame_ratio = missing_count / count if count else None
     coverage = valid_count / count if count else 0.0
     duration = sum(durations)
     time_coverage = (
@@ -270,6 +281,8 @@ def evaluate_trajectory(frames: list[dict], config: QualityConfig | None = None)
     if count:
         if coverage < config.min_coverage or time_coverage < config.min_coverage:
             reasons.append("coverage_below_threshold")
+        if config.max_missing_frame_ratio is not None and missing_frame_ratio > config.max_missing_frame_ratio:
+            reasons.append("missing_frame_ratio_exceeds_threshold")
         if longest_gap > config.max_gap_s:
             reasons.append("missing_interval_exceeds_threshold")
         if len(anomalous_frames) > config.max_anomalous_frames:
@@ -284,6 +297,8 @@ def evaluate_trajectory(frames: list[dict], config: QualityConfig | None = None)
         "reasons": reasons,
         "frames": count,
         "valid_frames": valid_count,
+        "missing_frames": missing_count,
+        "missing_frame_ratio": missing_frame_ratio,
         "observed_frames": sum(point is not None for point in filtered),
         "raw_observed_frames": sum(point is not None for point in raw),
         "coverage": coverage,

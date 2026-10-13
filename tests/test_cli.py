@@ -248,6 +248,42 @@ def test_settings_override_reaches_activity_pose_and_quality_and_is_recorded(
     assert report["decision"] == ("accepted" if explicit_quality_speed is None else "rejected")
 
 
+@pytest.mark.parametrize("flag", ["--config", "--settings"])
+@pytest.mark.parametrize(
+    ("missing_limit", "coverage_limit", "gap_limit", "expected_reason"),
+    [
+        (0.1, 0.8, 0.5, "missing_frame_ratio_exceeds_threshold"),
+        (0.2, 0.8, 0.5, None),
+        (0.2, 0.9, 0.5, "coverage_below_threshold"),
+        (0.2, 0.8, 0.05, "missing_interval_exceeds_threshold"),
+    ],
+)
+def test_missing_and_coverage_config_controls_episode_and_is_saved(
+    pipeline, tmp_path, capsys, flag, missing_limit, coverage_limit, gap_limit, expected_reason
+):
+    pipeline["points"][2] = None
+    quality = {"max_missing_frame_ratio": missing_limit, "min_coverage": coverage_limit, "max_gap_s": gap_limit}
+    path = tmp_path / "screening.json"
+    path.write_text(json.dumps({"quality": quality}))
+    result = cli.main(["analyze", str(pipeline["source"]), "--output", str(pipeline["output"]), flag, str(path)])
+    assert result == 0
+    report = json.loads((pipeline["output"] / "analysis.json").read_text())
+    output = json.loads(capsys.readouterr().out)
+    assert report["decision"] == output["decision"] == ("rejected" if expected_reason else "accepted")
+    assert report["reasons"] == ([expected_reason] if expected_reason else [])
+    for name, value in quality.items():
+        assert report["config"]["quality"][name] == report["summary"]["config"][name] == value
+    assert report["summary"]["missing_frames"] == 1
+    assert report["summary"]["missing_frame_ratio"] == pytest.approx(1 / 6)
+    assert report["summary"]["coverage"] == pytest.approx(5 / 6)
+    rows = list(csv.DictReader((pipeline["output"] / "actions.csv").open()))
+    assert len(rows) == 6
+    assert [row["frame_valid"] for row in rows] == ["1", "1", "0", "1", "1", "1"]
+    assert rows[2]["x_m"] == rows[2]["y_m"] == rows[2]["z_m"] == ""
+    assert all(row["episode_accepted"] == ("0" if expected_reason else "1") for row in rows)
+
+
+@pytest.mark.parametrize("flag", ["--config", "--settings"])
 @pytest.mark.parametrize(
     ("settings", "message"),
     [
@@ -255,15 +291,16 @@ def test_settings_override_reaches_activity_pose_and_quality_and_is_recorded(
         ([], "Settings must contain only"),
         ({"quality": {"no_such_setting": 1}}, "no_such_setting"),
         ({"quality": {"min_coverage": 2}}, "min_coverage"),
+        ({"quality": {"max_missing_frame_ratio": -0.1}}, "max_missing_frame_ratio"),
+        ({"quality": {"max_missing_frame_ratio": True}}, "max_missing_frame_ratio"),
+        ({"quality": {"max_gap_s": -1}}, "max_gap_s"),
         ({"pose": {"enable_velocity_gate": 1}}, "must be boolean"),
     ],
 )
-def test_invalid_settings_have_cli_error_without_processing_input(pipeline, tmp_path, capsys, settings, message):
+def test_invalid_settings_have_cli_error_without_processing_input(pipeline, tmp_path, capsys, flag, settings, message):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps(settings))
-    result = cli.main(
-        ["analyze", str(pipeline["source"]), "--output", str(pipeline["output"]), "--settings", str(path)]
-    )
+    result = cli.main(["analyze", str(pipeline["source"]), "--output", str(pipeline["output"]), flag, str(path)])
     capture = capsys.readouterr()
     assert result == 2
     assert message in capture.err

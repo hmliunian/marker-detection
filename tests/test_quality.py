@@ -78,14 +78,57 @@ def test_missing_longer_than_limit_rejects_whole_episode():
     assert len(frames) == 20
 
 
-def test_coverage_checks_elapsed_time_as_well_as_frame_count():
+@pytest.mark.parametrize("missing_limit", [None, 0.1])
+def test_coverage_checks_elapsed_time_as_well_as_frame_count(missing_limit):
     frames = trajectory([0, 0.1, 0.2, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8])
     frames[2].update(xyz_m=None, raw_xyz_m=None, valid=False)
-    result = evaluate_trajectory(frames, QualityConfig(max_gap_s=10))
+    result = evaluate_trajectory(frames, QualityConfig(max_gap_s=10, max_missing_frame_ratio=missing_limit))
     assert result["coverage"] == 0.9
     assert result["time_coverage"] < 0.5
     assert result["status"] == "rejected"
     assert "coverage_below_threshold" in result["reasons"]
+    assert "missing_frame_ratio_exceeds_threshold" not in result["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("limit", "missing", "expected"),
+    [
+        (None, [4, 5], "accepted"),
+        (0.1, [4, 5], "rejected"),
+        (0.2, [4, 5], "accepted"),
+        (1.0, [4, 5], "accepted"),
+        (0.0, [], "accepted"),
+        (0.0, [4], "rejected"),
+    ],
+)
+def test_missing_frame_ratio_limit_and_equality_preserve_observations(limit, missing, expected):
+    frames = trajectory([i / 10 for i in range(10)])
+    for index in missing:
+        frames[index].update(xyz_m=None, raw_xyz_m=None, valid=False)
+    original = copy.deepcopy(frames)
+    result = evaluate_trajectory(frames, relaxed(max_missing_frame_ratio=limit))
+    assert result["status"] == expected
+    assert result["missing_frames"] == len(missing)
+    assert result["missing_frame_ratio"] == pytest.approx(len(missing) / 10)
+    assert result["reasons"] == (["missing_frame_ratio_exceeds_threshold"] if expected == "rejected" else [])
+    assert result["config"]["max_missing_frame_ratio"] == limit
+    assert [{key: value for key, value in frame.items() if key != "quality"} for frame in frames] == original
+    assert [frame["quality"]["valid"] for frame in frames] == [index not in missing for index in range(10)]
+
+
+def test_missing_frame_ratio_includes_quality_rejected_poses_even_when_anomalies_are_tolerated():
+    frames = trajectory([i / 10 for i in range(10)])
+    frames[2].update(xyz_m=None, raw_xyz_m=None, valid=False)
+    frames[5]["anomaly"] = True
+    result = evaluate_trajectory(frames, relaxed(max_missing_frame_ratio=0.1, max_anomalous_frames=1))
+    assert result["observed_frames"] == 9
+    assert result["valid_frames"] == 8
+    assert result["missing_frames"] == 2
+    assert result["missing_frame_ratio"] == 0.2
+    assert result["status"] == "rejected"
+    assert result["reasons"] == ["missing_frame_ratio_exceeds_threshold"]
+    assert frames[5]["valid"] is True
+    assert frames[5]["quality"]["valid"] is False
 
 
 def test_spatial_jump_rejects_and_preserves_both_original_positions():
@@ -161,11 +204,16 @@ def test_all_missing_video_counts_full_observation_duration():
     assert result["status"] == "rejected"
     assert result["longest_gap_s"] == pytest.approx(0.4)
     assert result["coverage"] == 0
+    assert result["missing_frame_ratio"] == 1
     assert result["max_speed_m_s"] is None
 
 
 def test_empty_or_single_frame_is_review_not_successful_continuity():
-    assert evaluate_trajectory([])["status"] == "review"
+    empty = evaluate_trajectory([], QualityConfig(max_missing_frame_ratio=0))
+    assert empty["status"] == "review"
+    assert empty["missing_frames"] == 0
+    assert empty["missing_frame_ratio"] is None
+    json.dumps(empty, allow_nan=False)
     assert evaluate_trajectory(trajectory([0]))["status"] == "review"
 
 
@@ -179,3 +227,10 @@ def test_invalid_thresholds_fail_before_running():
         QualityConfig(max_speed_m_s=float("nan"))
     with pytest.raises(ValueError):
         QualityConfig(min_coverage=1.2)
+
+
+@pytest.mark.parametrize("name", ["min_coverage", "max_missing_frame_ratio"])
+@pytest.mark.parametrize("value", [-0.1, 1.1, float("nan"), float("inf"), float("-inf"), True, "0.1"])
+def test_invalid_ratio_configuration_is_rejected(name, value):
+    with pytest.raises(ValueError, match=name):
+        QualityConfig(**{name: value})

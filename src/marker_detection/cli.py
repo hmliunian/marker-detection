@@ -275,7 +275,7 @@ def main(argv=None) -> int:
     run.add_argument("--output", required=True, help="新建或空结果目录")
     run.add_argument("--sidecar", help="显式指定采集 JSON")
     run.add_argument("--geometry", help="参考 UMI 几何 JSON；默认项目自带配置")
-    run.add_argument("--settings", help="activity/quality/pose 超参数 JSON")
+    run.add_argument("--config", "--settings", dest="settings", help="activity/quality/pose 配置 JSON")
     run.add_argument("--video-backend", choices=["auto", "cuda", "cpu"], default="auto")
     run.add_argument("--gpu", type=int, default=0)
     args = parser.parse_args(argv)

@@ -72,6 +72,7 @@ REASONS = {
     "other_hand_activity_unresolved": "另一只手是否参与尚不确定",
     "no_reliable_activity_evidence": "缺少可靠的主控手活动证据",
     "coverage_below_threshold": "有效覆盖率低于阈值",
+    "missing_frame_ratio_exceeds_threshold": "缺失帧比例超过阈值",
     "missing_interval_exceeds_threshold": "连续缺失时长超过阈值",
     "anomalous_frames_exceed_threshold": "异常帧数量超过阈值",
     "insufficient_valid_frames": "有效帧不足",
