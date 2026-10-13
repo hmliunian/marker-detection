@@ -1,0 +1,407 @@
+{
+ "marker_geometry": {
+  "description": "Transforms are row-major 4x4 homogeneous matrices; parent_T_child maps child-frame coordinates into the parent frame. Each rig is right-handed: +X points toward fingertips, +Y points left, +Z points up. Marker +X points to printed right, +Y to printed top, +Z out of the paper.",
+  "apriltag_family": "tag16h5",
+  "image_scale": 2.0,
+  "nthreads": 1,
+  "quad_decimate": 1.0,
+  "quad_sigma": 0.0,
+  "refine_edges": true,
+  "decode_sharpening": 0.25,
+  "max_hamming": 1,
+  "min_decision_margin": 20.0,
+  "rigs": [
+   {
+    "name": "left",
+    "description": "AprilTag IDs 0-3 are mounted on the left-hand rig.",
+    "pose_topic": "/arm/left/pose_state",
+    "rig_T_target": [
+     [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "markers": [
+     {
+      "id": 0,
+      "face": "top",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        0.0,
+        1.0,
+        0.0,
+        -0.172
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0,
+        0.1032
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 1,
+      "face": "left",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        -1.0,
+        0.0,
+        0.0,
+        -0.172
+       ],
+       [
+        0.0,
+        0.0,
+        1.0,
+        0.0394
+       ],
+       [
+        0.0,
+        1.0,
+        0.0,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 2,
+      "face": "back",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        0.0,
+        0.1908089953765448,
+        -0.981627183447664,
+        -0.21746
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.981627183447664,
+        0.1908089953765448,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 3,
+      "face": "right",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -0.172
+       ],
+       [
+        0.0,
+        0.0,
+        -1.0,
+        -0.0394
+       ],
+       [
+        0.0,
+        1.0,
+        0.0,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "name": "right",
+    "description": "AprilTag IDs 4-7 are mounted on the right-hand rig.",
+    "pose_topic": "/arm/right/pose_state",
+    "rig_T_target": [
+     [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "markers": [
+     {
+      "id": 4,
+      "face": "top",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        0.0,
+        1.0,
+        0.0,
+        -0.172
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0,
+        0.1032
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 5,
+      "face": "left",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        -1.0,
+        0.0,
+        0.0,
+        -0.172
+       ],
+       [
+        0.0,
+        0.0,
+        1.0,
+        0.0394
+       ],
+       [
+        0.0,
+        1.0,
+        0.0,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 6,
+      "face": "back",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        0.0,
+        0.1908089953765448,
+        -0.981627183447664,
+        -0.21746
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.981627183447664,
+        0.1908089953765448,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     },
+     {
+      "id": 7,
+      "face": "right",
+      "marker_size_m": 0.0525,
+      "rig_T_marker": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -0.172
+       ],
+       [
+        0.0,
+        0.0,
+        -1.0,
+        -0.0394
+       ],
+       [
+        0.0,
+        1.0,
+        0.0,
+        0.0648
+       ],
+       [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "stereo_node": {
+  "ros__parameters": {
+   "left_image_topic": "/robot/camera/head/left/image",
+   "right_image_topic": "/robot/camera/head/right/image",
+   "camera_info_topic": "/robot/camera/head/right/camera_info",
+   "publish_mono": true,
+   "mono_topic": "/slam/left_mono",
+   "process_frame_stride": 3
+  }
+ },
+ "perception_node": {
+  "ros__parameters": {
+   "imu_topic": "/robot/imu/head/data",
+   "camera_info_topic": "/robot/camera/head/right/camera_info",
+   "left_image_topic": "/slam/left_mono",
+   "disparity_topic": "/slam/disparity",
+   "Tcb": [
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "use_wheel_factor": false,
+   "use_gravity_correction": false,
+   "max_imu_wait_ms": 200.0,
+   "min_feature_depth": 0.1,
+   "max_feature_depth": 5.0,
+   "feature_mask_start_row": 300,
+   "enable_long_feature": false
+  }
+ },
+ "marker_rig_pose_node": {
+  "ros__parameters": {
+   "camera_image_topic": "/robot/camera/head/left/image",
+   "right_camera_image_topic": "/robot/camera/head/right/image",
+   "camera_info_topic": "/robot/camera/head/right/camera_info",
+   "pose_frame_info_topic": "/robot/camera/head/left/camera_info",
+   "stats_period_s": 5.0,
+   "image_scale_override": 1.0,
+   "image_cache_size": 10,
+   "stereo_sync_slop_sec": 0.005,
+   "max_left_error_gap_px": 0.25,
+   "min_candidate_rotation_deg": 10.0,
+   "max_reprojection_error_px": 1.0,
+   "max_linear_speed_mps": 1.5,
+   "max_angular_speed_degps": 360.0
+  }
+ },
+ "umi_mcap_reader": {
+  "ros__parameters": {
+   "video_topic_pattern": "/camera/{sensor}/{side}/compressed",
+   "imu_topic_pattern": "/imu/{sensor}",
+   "camera_info_topic_pattern": "/camera/{sensor}/{side}/camera_info"
+  }
+ },
+ "umi_pose_writer": {
+  "ros__parameters": {
+   "head_pose_topic": "/head/pose_state",
+   "left_end_link_pose_topic": "/arm/left/pose_state",
+   "right_end_link_pose_topic": "/arm/right/pose_state",
+   "enable_trajectory_smoothing": true,
+   "smoothing_window_ms": 167.0,
+   "smoothing_order": 2
+  }
+ }
+}

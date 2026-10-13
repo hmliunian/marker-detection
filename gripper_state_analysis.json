@@ -1,0 +1,95 @@
+{
+  "conclusion": "数值统计、同步视频抽查和触觉交叉检查支持：每爪 position 可作为一维连续开度 state；触觉提供接触/夹持的辅助证据。",
+  "scope": {
+    "position_episodes": 100,
+    "position_streams": 200,
+    "position_messages": 173452,
+    "tactile_episodes": 100,
+    "tactile_messages": 285230,
+    "video_spot_checked_episodes": 9,
+    "video_sampling_method": "选择包含明显开合、中间开度夹持和恒零 position 的代表样本；不是逐帧人工真值标注。"
+  },
+  "position_interpretation": {
+    "dimensions_per_gripper": 1,
+    "direction": "较大值对应较大开度；接近 0 对应闭合或很小开度。",
+    "observed_wide_open_values": "约 98–103，属于抽查画面的观察范围，不是已验证的统一分类阈值。",
+    "intermediate_values": "夹持物体时可稳定在约 12、50、73 等值；恒定或中间值本身不表示异常。",
+    "unit": null,
+    "message_wrapper": "foxglove.JointStates 每条只有一个 j0.position，封装名不改变单自由度开合语义。"
+  },
+  "tactile_interpretation": {
+    "points_per_finger": 25,
+    "components": [
+      "fx",
+      "fy",
+      "fz"
+    ],
+    "unit": null,
+    "aggregation": "sum_norm = sum over tactile points of sqrt(fx^2 + fy^2 + fz^2); this is an activity measure, not net resultant force or a binary contact label.",
+    "positive_evidence": "有效时段的持续触觉响应支持接触；结合物体位于夹指间的视频可支持夹持判断。",
+    "zero_evidence": "零响应不能单独证明张开或没有夹持；未定位零响应是接触位置、量程/阈值、传感器或采集问题。",
+    "action_limitation": "接触可能来自物体、环境或两指自身；position 与触觉不直接提供原始二值开合控制命令。"
+  },
+  "quality": {
+    "missing_channels": [
+      {
+        "index": 17,
+        "id": "9f9023b351905f847da95f1fe4735a6f",
+        "missing": [
+          "left_finger0"
+        ]
+      },
+      {
+        "index": 43,
+        "id": "ca31b91e0261137e2bf92cf146be4726",
+        "missing": [
+          "right_finger1"
+        ]
+      },
+      {
+        "index": 60,
+        "id": "a1d9324b623b7b1dc6ab9cf88ccf4958",
+        "missing": [
+          "left_finger0",
+          "left_finger1"
+        ]
+      }
+    ],
+    "all_existing_tactile_channels_zero": [
+      {
+        "index": 2,
+        "id": "37d6a87c621c4fb273bf3ee32e12df33",
+        "action_text": "关闭C11房门 的 门把手"
+      },
+      {
+        "index": 32,
+        "id": "4bef609c55f9136b30f0b77f4d586a2b",
+        "action_text": "把 白色按压瓶 里的液体倒进 红色保温杯。"
+      },
+      {
+        "index": 38,
+        "id": "02647acb6b364323da198c97c2632ed4",
+        "action_text": "搬运 原木中号托盘。"
+      },
+      {
+        "index": 60,
+        "id": "a1d9324b623b7b1dc6ab9cf88ccf4958",
+        "action_text": "用 黑色保温杯 从 炒锅 里舀出内容。"
+      }
+    ],
+    "maximum_tactile_gap_ms": 1860.206,
+    "alignment_tolerance_ms": 50,
+    "present_finger_frame_pairs_outside_tolerance": 257,
+    "unavailable_values": "逐帧表中缺失通道或最近触觉时间相差超过 50 ms 时，available=0，触觉数值留空；真实零值保留为 0。"
+  },
+  "suggested_state_fields": {
+    "left_gripper_state": "left_position",
+    "right_gripper_state": "right_position",
+    "optional_tactile_features": "每爪两个指面的 sum_norm、sum_fz、nonzero_points 和 available，用于辅助接触判断。"
+  },
+  "limits": [
+    "没有逐帧人工真值，不能给出整个数据集的开合识别准确率。",
+    "position 和触觉的物理单位未在读取的 schema 中声明。",
+    "没有自动生成二值开合或夹持标签。"
+  ]
+}

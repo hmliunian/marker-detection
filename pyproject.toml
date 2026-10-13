@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "umi-marker-screening"
+version = "0.1.0"
+description = "Offline UMI marker trajectories, episode screening, and local review GUI"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy>=2.0",
+  "scipy>=1.13",
+  "opencv-python-headless>=4.10",
+  "pupil-apriltags>=1.0.4.post11",
+  "av>=19",
+  "mcap>=1.2",
+  "flatbuffers>=24",
+  "mcap-ros2-support>=0.5",
+  "matplotlib>=3.9",
+  "PySide6>=6.7",
+  "plotly>=6.0",
+]
+
+[project.scripts]
+marker-screen = "marker_detection.cli:main"
+marker-gui = "marker_detection.gui:main"
+marker-web = "marker_detection.web:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[project.optional-dependencies]
+browser-test = ["selenium>=4.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/marker_detection"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"configs/UMI_v3.json" = "marker_detection/data/UMI_v3.json"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

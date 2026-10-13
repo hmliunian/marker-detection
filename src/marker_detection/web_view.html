@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marker 轨迹审核</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, "Noto Sans CJK SC", sans-serif;
+      color: #233745; background: #f6f8fa; font-size: 14px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { padding: 8px 12px; border: 1px solid #ccd6de; border-radius: 6px;
+      background: #fff; color: #29404e; cursor: pointer; }
+    button:hover:enabled { border-color: #168581; background: #edf7f5; }
+    button:disabled { opacity: .45; cursor: default; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #168581; outline-offset: 3px; }
+    input[type="number"] { width: 88px; border: 1px solid #ccd6de; border-radius: 5px;
+      padding: 7px 8px; background: #fff; color: #233745; }
+    [hidden] { display: none !important; }
+    main { width: min(1660px, 100%); margin: auto; padding: 20px 24px; }
+    header { display: flex; align-items: center; gap: 24px; }
+    h1 { font-size: 24px; margin: 0; letter-spacing: -.5px; }
+    h2 { font-size: 14px; margin: 0 0 10px; font-weight: 650; }
+    .subtitle { font-weight: 400; color: #687b87; font-size: 12px; }
+    #hand-label { font-size: 15px; }
+    #decision { margin-left: auto; border-radius: 6px; padding: 7px 16px; font-weight: 650; }
+    #decision[data-status="accepted"] { color: #157b63; background: #e4f4ec; }
+    #decision[data-status="rejected"] { color: #a44435; background: #faebe7; }
+    #decision[data-status="review"] { color: #95611e; background: #fff1d9; }
+    #decision[data-status="excluded_carry"] { color: #626b83; background: #ebedf3; }
+    #episode-id { color: #72838e; margin: 6px 0 14px; font-size: 12px; overflow-wrap: anywhere; }
+    #load-error, #plot-warning { padding: 12px 16px; background: #fff0e9; color: #994c2d;
+      border: 1px solid #edcbb7; border-radius: 6px; margin: 10px 0; }
+    #summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+      border: 1px solid #e0e7ec; background: #fff; border-radius: 7px; padding: 10px 12px; }
+    .metric { padding: 0 12px; }
+    .metric dt { font-size: 12px; color: #72818d; margin: 0 0 4px; }
+    .metric dd { font-size: 21px; font-weight: 650; margin: 0; white-space: nowrap; }
+    #reasons { color: #576d7c; font-size: 12px; margin: 11px 0 14px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+    .panel { min-width: 0; }
+    #image-stage { height: 278px; position: relative; background: #eaf0f3; overflow: hidden;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    #frame-image, #marker-overlay { position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: contain; }
+    #marker-overlay { pointer-events: none; }
+    #no-preview { text-align: center; color: #758792; white-space: pre-line; padding: 16px; }
+    #frame-details { margin-top: 8px; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+    #frame-details p { margin: 0; }
+    #frame-details[data-valid="false"] #frame-reason { color: #9b5c27; }
+    #frame-summary { font-weight: 550; }
+    #frame-metrics { color: #5f7686; }
+    #plot-3d { height: 364px; background: #fff; border-radius: 6px; position: relative; }
+    .software-three-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    .software-three-canvas:active { cursor: grabbing; }
+    .spatial-tooltip { position: absolute; background: #203847ed; color: #fff; padding: 7px 9px;
+      border-radius: 4px; font-size: 11px; pointer-events: none; white-space: pre-line; z-index: 2; }
+    .timeline { margin-top: 13px; }
+    #plot-time { height: 242px; background: #fff; border-radius: 6px; }
+    .navigation { margin-top: 12px; }
+    #frame-slider { display: block; width: 100%; margin: 4px 0 12px; accent-color: #168581; }
+    .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+    .controls label { display: inline-flex; align-items: center; gap: 7px; margin-left: 8px; }
+    #frame-time { width: 108px; }
+    #frame-count { color: #6b808e; font-size: 12px; margin-left: 4px; }
+    #parameters-button { margin-left: auto; }
+    footer { color: #778996; font-size: 11px; margin-top: 12px; }
+    dialog { max-width: min(780px, 95vw); width: 780px; border: 1px solid #d4dfe5;
+      border-radius: 9px; color: #233745; padding: 22px; background: #f8fafb; }
+    dialog::backdrop { background: #142b3d55; }
+    .dialog-title { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    #parameters-text { max-height: 65vh; overflow: auto; background: #fff; padding: 14px;
+      border: 1px solid #dde5eb; border-radius: 5px; font-size: 12px; white-space: pre-wrap; }
+    @media (min-width: 1550px) { #image-stage { height: 324px; } #plot-3d { height: 410px; } }
+    @media (max-width: 950px) { main { padding: 16px; } .workspace { grid-template-columns: 1fr; }
+      #summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 0; }
+      header { gap: 14px; } h1 { font-size: 21px; } #image-stage { height: 340px; }
+      #plot-3d { height: 340px; } .subtitle { display: block; margin-top: 4px; } }
+    @media (max-width: 560px) { header { flex-wrap: wrap; } #decision { margin-left: 0; }
+      .metric { padding: 0 5px; } .metric dd { font-size: 17px; }
+      .controls label { margin-left: 0; } #parameters-button { margin-left: 0; }
+      #image-stage { height: 240px; } }
+  </style>
+</head>
+<body data-ready="false">
+  <main>
+    <header>
+      <h1>Marker 轨迹审核</h1>
+      <span id="hand-label">主控手 —</span>
+      <span id="decision" data-status="review">读取中</span>
+    </header>
+    <p id="episode-id">正在读取分析结果…</p>
+    <div id="load-error" role="alert" hidden></div>
+    <dl id="summary-grid" aria-label="本次分析摘要"></dl>
+    <p id="reasons"></p>
+    <div id="plot-warning" role="status" hidden></div>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="image-heading">
+        <h2 id="image-heading">图像证据 <span class="subtitle">· 绿色为选中主手，橙色为未采用观测</span></h2>
+        <div id="image-stage" data-preview="loading">
+          <img id="frame-image" alt="当前帧图像" hidden>
+          <svg id="marker-overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Marker 角点及身份标注"></svg>
+          <span id="no-preview">正在读取图像…</span>
+        </div>
+        <div id="frame-details" aria-live="polite">
+          <p id="frame-summary"></p>
+          <p id="frame-position"></p>
+          <p id="frame-reason"></p>
+          <p id="frame-metrics"></p>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="spatial-heading">
+        <h2 id="spatial-heading">三维轨迹 <span class="subtitle">· 米 / 头部左相机坐标系 · 拖动旋转</span></h2>
+        <div id="plot-3d" aria-label="交互三维轨迹"></div>
+      </section>
+    </div>
+    <section class="timeline" aria-labelledby="timeline-heading">
+      <h2 id="timeline-heading">XYZ 连续性 <span class="subtitle">· 橙色区域为无效帧；缺失断线；× 为被拒绝的原始位置</span></h2>
+      <div id="plot-time" aria-label="XYZ 随时间曲线，点击数据点定位帧"></div>
+    </section>
+    <section class="navigation" aria-label="帧与时间导航">
+      <input id="frame-slider" type="range" min="0" max="0" value="0" step="1" aria-label="按序列选择帧" disabled>
+      <div class="controls">
+        <button id="previous-frame" type="button" disabled>← 上一帧</button>
+        <button id="next-frame" type="button" disabled>下一帧 →</button>
+        <button id="next-invalid" type="button" disabled>下一处无效</button>
+        <label for="frame-number">帧号 <input id="frame-number" type="number" step="1" disabled></label>
+        <label for="frame-time">时间 <input id="frame-time" type="number" step="0.033" disabled> s</label>
+        <span id="frame-count"></span>
+        <button id="parameters-button" type="button" disabled>指标与参数</button>
+      </div>
+    </section>
+    <footer>无效帧不会通过插值补齐。轨迹连续性用于辅助审核，不代表绝对位置精度。</footer>
+  </main>
+  <dialog id="parameters-dialog">
+    <div class="dialog-title"><h2>本次分析的指标与参数</h2><button id="close-parameters" type="button">关闭</button></div>
+    <p>以下为本次分析保存的证据与阈值；修改参数后需重新分析。</p>
+    <pre id="parameters-text"></pre>
+  </dialog>
+  <script src="/plotly.min.js"></script>
+  <script>
+    "use strict";
+
+    const byId = (id) => document.getElementById(id);
+    const colors = ["#168581", "#5471c4", "#a56a32"];
+    const rejectedColor = "#cb7833";
+    const decisions = {accepted: "合格", rejected: "不合格", review: "待审核", excluded_carry: "搬运 · 单独标记"};
+    const reasonLabels = {
+      ok: "有效观测", accepted: "有效观测", missing: "位姿缺失", no_marker: "未检测到主手 marker",
+      no_primary_marker: "未检测到主手 marker", no_pose: "未获得有效位姿", ambiguous: "身份或位姿存在歧义",
+      primary_hand_unresolved: "主控手未确定", no_ippe_candidate: "没有可用的单 tag 位姿解",
+      marker_identity_ambiguous: "主手 marker 身份存在歧义", stereo_calibration_unavailable: "缺少可用的双目标定",
+      ambiguous_pose_no_right_marker: "单 tag 位姿有歧义，右目缺少对应 marker", pnp_failed: "PnP 位姿求解失败",
+      nonfinite_pose: "位姿包含非有限数值", nonpositive_depth: "位姿深度不是正值",
+      reprojection_error: "重投影误差超过阈值", marker_geometry_inconsistent: "多 tag 观测与支架几何不一致",
+      velocity_gate: "相机系相对速度超过阈值", speed_exceeded: "相邻位姿速度超过阈值", jump: "轨迹跳变",
+      both_hands_active: "非搬运任务中双手参与", both_hands_have_activity_evidence: "非搬运任务中双手均有参与证据",
+      carry_task: "搬运任务，单独标记", carry_task_separate: "搬运任务，单独标记",
+      one_active_hand_other_open: "一侧参与操作，另一侧保持打开", other_hand_activity_unresolved: "另一只手是否参与尚不确定",
+      no_reliable_activity_evidence: "缺少可靠的主控手活动证据", coverage_below_threshold: "有效覆盖率低于阈值",
+      missing_interval_exceeds_threshold: "连续缺失时长超过阈值", anomalous_frames_exceed_threshold: "异常帧数量超过阈值",
+      insufficient_valid_frames: "有效帧不足", empty_trajectory: "没有轨迹帧", missing_observation: "缺少有效观测",
+      invalid_timestamp: "时间戳无效", nonincreasing_timestamp: "时间戳未递增", nonfinite_xyz: "坐标包含非有限数值",
+      invalid_xyz_shape: "坐标不是三维向量", invalid_xyz_value: "坐标数值无效", nonfinite_kinematics: "无法计算有限的运动指标",
+      acceleration_exceeded: "相对加速度超过阈值", reappearance_speed_exceeded: "缺失后重现位移超过速度阈值",
+      upstream_anomaly: "位姿求解检测到异常"
+    };
+    let analysis, frames, valid, raw, times, cursorShapeIndex;
+    let currentIndex = -1, imageRequest = 0, plotsReady = false, software3D = null;
+
+    function reasonText(value) {
+      const text = String(value || "");
+      if (text.startsWith("raw_") && reasonLabels[text.slice(4)]) return "原始位置：" + reasonLabels[text.slice(4)];
+      return reasonLabels[text] || text || "—";
+    }
+    function finiteXYZ(point) {
+      return Array.isArray(point) && point.length === 3 && point.every(Number.isFinite);
+    }
+    function renderError(error) {
+      byId("load-error").textContent = "无法显示分析结果：" + (error.message || String(error));
+      byId("load-error").hidden = false;
+      document.body.dataset.ready = "error";
+    }
+    async function fetchJSON(path) {
+      const response = await fetch(path, {cache: "no-store"});
+      if (!response.ok) throw new Error(path + "（HTTP " + response.status + "）");
+      return response.json();
+    }
+    function addMetric(label, value) {
+      const group = document.createElement("div");
+      group.className = "metric";
+      const title = document.createElement("dt"), amount = document.createElement("dd");
+      title.textContent = label;
+      amount.textContent = value;
+      group.append(title, amount);
+      byId("summary-grid").append(group);
+    }
+    function renderSummary() {
+      byId("episode-id").textContent = String(analysis.episode_id || "未命名 episode");
+      byId("episode-id").title = String(analysis.source || "");
+      byId("hand-label").textContent = "主控手  " + ({left: "左手", right: "右手"}[analysis.primary_hand] || "未确定");
+      byId("decision").textContent = decisions[analysis.decision] || "未知结论";
+      byId("decision").dataset.status = Object.hasOwn(decisions, analysis.decision) ? analysis.decision : "review";
+      const count = frames.length, accepted = valid.filter(Boolean).length, summary = analysis.summary || {};
+      addMetric("视频帧", String(count));
+      addMetric("有效位置", accepted + " / " + count);
+      addMetric("有效覆盖", count ? (100 * accepted / count).toFixed(1) + "%" : "—");
+      addMetric("时间范围", count ? (times[count - 1] - times[0]).toFixed(2) + " s" : "—");
+      addMetric("最长缺失", Number.isFinite(summary.longest_gap_s) ? summary.longest_gap_s.toFixed(3) + " s" : "—");
+      const hasRawSpeed = Number.isFinite(summary.max_raw_speed_m_s);
+      const speed = hasRawSpeed ? summary.max_raw_speed_m_s : summary.max_speed_m_s;
+      addMetric(hasRawSpeed ? "原始最大相对速度" : "最大相对速度", Number.isFinite(speed) ? speed.toFixed(3) + " m/s" : "—");
+      const reasons = analysis.reasons?.length ? analysis.reasons : (analysis.primary_hand_evidence?.reasons || []);
+      byId("reasons").textContent = "结论依据：" + (reasons.length ? reasons.map(reasonText).join("；") : "未记录额外原因");
+      byId("parameters-text").textContent = JSON.stringify(
+        {summary, config: analysis.config || {}, source: analysis.source},
+        (key, value) => key.endsWith("timestamp_ns") ? undefined : value, 2
+      );
+      byId("parameters-button").disabled = false;
+    }
+    function invalidIntervals() {
+      const intervals = [];
+      const fallback = analysis.summary?.nominal_frame_interval_s || 1 / 30;
+      for (let index = 0; index < frames.length; index++) {
+        if (valid[index]) continue;
+        const start = index;
+        while (index + 1 < frames.length && !valid[index + 1]) index++;
+        const left = start ? (times[start - 1] + times[start]) / 2 : times[start] - fallback / 2;
+        const right = index + 1 < frames.length ? (times[index] + times[index + 1]) / 2 : times[index] + fallback / 2;
+        intervals.push([Math.min(left, right), Math.max(left, right)]);
+      }
+      return intervals;
+    }
+    function pointValues(points, component, mask) {
+      return points.map((point, index) => mask[index] && finiteXYZ(point) ? point[component] : null);
+    }
+    function supportsWebGL() {
+      try {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+        if (!context) return false;
+        context.getExtension("WEBGL_lose_context")?.loseContext();
+        return true;
+      } catch (_) { return false; }
+    }
+    function createSoftware3D() {
+      const container = byId("plot-3d");
+      container.replaceChildren();
+      container.dataset.renderer = "canvas";
+      window.markerReview.renderer = "canvas";
+      const canvas = document.createElement("canvas"), tooltip = document.createElement("div");
+      canvas.id = "spatial-canvas";
+      canvas.className = "software-three-canvas";
+      canvas.tabIndex = 0;
+      canvas.setAttribute("aria-label", "三维轨迹软件投影：拖动或方向键旋转，滚轮或加减键缩放，点击观测定位帧");
+      tooltip.className = "spatial-tooltip";
+      tooltip.hidden = true;
+      container.append(canvas, tooltip);
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("浏览器无法创建二维画布以显示三维轨迹");
+      const observations = [];
+      frames.forEach((frame, index) => {
+        const point = valid[index] ? frame.xyz_m : raw[index];
+        if (finiteXYZ(point)) observations.push({point, index, accepted: valid[index]});
+      });
+      const lower = [Infinity, Infinity, Infinity], upper = [-Infinity, -Infinity, -Infinity];
+      for (const {point} of observations) for (let axis = 0; axis < 3; axis++) {
+        lower[axis] = Math.min(lower[axis], point[axis]);
+        upper[axis] = Math.max(upper[axis], point[axis]);
+      }
+      if (!observations.length) { lower.fill(-.05); upper.fill(.05); }
+      const center = lower.map((value, axis) => (value + upper[axis]) / 2);
+      const extent = Math.max(...upper.map((value, axis) => value - lower[axis]), .02) * 1.15;
+      const minimum = center.map((value) => value - extent / 2);
+      const maximum = center.map((value) => value + extent / 2);
+      let yaw = -.65, pitch = .45, zoom = 1, width = 0, height = 0, screenPoints = [], drag = null;
+      function project(point) {
+        const [x, y, z] = point.map((value, axis) => value - center[axis]);
+        const rotatedX = Math.cos(yaw) * x - Math.sin(yaw) * y;
+        const rotatedY = Math.sin(yaw) * x + Math.cos(yaw) * y;
+        const scale = Math.min(width * .67, (height - 75) * .68) / extent * zoom;
+        return {x: width / 2 + rotatedX * scale,
+          y: height / 2 + 12 + (Math.sin(pitch) * rotatedY - Math.cos(pitch) * z) * scale,
+          depth: Math.cos(pitch) * rotatedY + Math.sin(pitch) * z};
+      }
+      function segment(before, after, color, lineWidth = 1) {
+        const a = project(before), b = project(after);
+        context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y);
+        context.strokeStyle = color; context.lineWidth = lineWidth; context.stroke();
+      }
+      function cross(x, y, size) {
+        context.beginPath(); context.moveTo(x - size, y - size); context.lineTo(x + size, y + size);
+        context.moveTo(x - size, y + size); context.lineTo(x + size, y - size); context.stroke();
+      }
+      function draw() {
+        const ratio = window.devicePixelRatio || 1;
+        width = Math.max(container.clientWidth, 1); height = Math.max(container.clientHeight, 1);
+        if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+          canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+        }
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.clearRect(0, 0, width, height);
+        context.lineCap = "round";
+        // All three axes use the same scale; this projection changes only the view.
+        for (let step = 0; step <= 4; step++) {
+          const x = minimum[0] + extent * step / 4, y = minimum[1] + extent * step / 4;
+          segment([x, minimum[1], minimum[2]], [x, maximum[1], minimum[2]], "#e2e9ee");
+          segment([minimum[0], y, minimum[2]], [maximum[0], y, minimum[2]], "#e2e9ee");
+        }
+        for (let axis = 0; axis < 3; axis++) {
+          const end = [...minimum]; end[axis] = maximum[axis];
+          segment(minimum, end, "#9bacb9");
+          const label = project(end);
+          context.font = "11px system-ui, sans-serif"; context.fillStyle = "#526b7b";
+          context.fillText("XYZ"[axis] + " (m)", label.x + 7, label.y - 7);
+          for (let step = 0; step <= 4; step++) {
+            if (axis > 0 && step === 0) continue;
+            const value = [...minimum]; value[axis] += extent * step / 4;
+            const tick = project(value);
+            context.font = "9px system-ui, sans-serif"; context.fillStyle = "#7d8f9b";
+            context.fillText(value[axis].toFixed(2), tick.x + (axis === 2 ? -32 : 0), tick.y + (axis === 2 ? 0 : 13));
+          }
+        }
+        context.strokeStyle = colors[0]; context.lineWidth = 1.8; context.beginPath();
+        let connected = false, segments = 0;
+        frames.forEach((frame, index) => {
+          if (!valid[index]) { connected = false; return; }
+          const point = project(frame.xyz_m);
+          if (connected) context.lineTo(point.x, point.y);
+          else { context.moveTo(point.x, point.y); segments++; }
+          connected = true;
+        });
+        context.stroke();
+        screenPoints = observations.map((entry) => ({...entry, ...project(entry.point)})).sort((a, b) => a.depth - b.depth);
+        container.dataset.segments = String(segments);
+        container.dataset.points = String(screenPoints.length);
+        for (const point of screenPoints) {
+          if (point.accepted) {
+            context.fillStyle = colors[0]; context.beginPath(); context.arc(point.x, point.y, 1.7, 0, Math.PI * 2); context.fill();
+          } else {
+            context.strokeStyle = rejectedColor; context.lineWidth = 1.5; cross(point.x, point.y, 3);
+          }
+        }
+        if (currentIndex >= 0) {
+          const selected = valid[currentIndex] ? frames[currentIndex].xyz_m : raw[currentIndex];
+          if (finiteXYZ(selected)) {
+            const point = project(selected);
+            context.fillStyle = valid[currentIndex] ? "#233745" : rejectedColor;
+            context.strokeStyle = "white"; context.lineWidth = 1.5;
+            context.beginPath(); context.arc(point.x, point.y, 6, 0, Math.PI * 2); context.fill(); context.stroke();
+          }
+        }
+        context.font = "11px system-ui, sans-serif"; context.fillStyle = "#607785";
+        context.fillText("软件三维视图 · 拖动旋转 / 滚轮缩放", 13, 19);
+        context.fillText("双击恢复视角 · 点击观测定位帧", 13, height - 12);
+        context.strokeStyle = colors[0]; context.lineWidth = 2;
+        context.beginPath(); context.moveTo(14, 39); context.lineTo(34, 39); context.stroke();
+        context.fillStyle = "#526b7b"; context.fillText("有效观测", 42, 43);
+        context.strokeStyle = rejectedColor; cross(130, 39, 3); context.fillText("拒绝的原始位置", 141, 43);
+        if (!observations.length) {
+          context.textAlign = "center"; context.fillText("没有可显示的三维位置", width / 2, height / 2); context.textAlign = "left";
+        }
+      }
+      function eventPosition(event) {
+        const bounds = canvas.getBoundingClientRect();
+        return {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
+      }
+      function nearest(point) {
+        let distance = 11, best = null;
+        for (const observation of screenPoints) {
+          const candidate = Math.hypot(observation.x - point.x, observation.y - point.y);
+          if (candidate < distance) { best = observation; distance = candidate; }
+        }
+        return best;
+      }
+      canvas.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        drag = {...eventPosition(event), yaw, pitch, moved: false};
+        tooltip.hidden = true; canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        const point = eventPosition(event);
+        if (drag) {
+          const dx = point.x - drag.x, dy = point.y - drag.y;
+          drag.moved ||= Math.hypot(dx, dy) > 4;
+          yaw = drag.yaw + dx * .009; pitch = Math.max(-1.35, Math.min(1.35, drag.pitch + dy * .008));
+          draw(); return;
+        }
+        const observation = nearest(point);
+        tooltip.hidden = !observation;
+        if (observation) {
+          const frame = frames[observation.index];
+          tooltip.textContent = "帧 " + frame.frame_index + " · " + frame.time_s.toFixed(3) + " s\n" +
+            (observation.accepted ? "有效" : "原始位置 · 未接受") + "\nXYZ = " + observation.point.map((value) => value.toFixed(4)).join(", ") + " m";
+          tooltip.style.left = Math.min(point.x + 12, Math.max(0, width - 245)) + "px";
+          tooltip.style.top = Math.max(0, point.y - 65) + "px";
+        }
+      });
+      canvas.addEventListener("pointerup", (event) => {
+        const click = drag && !drag.moved; drag = null;
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        const observation = click ? nearest(eventPosition(event)) : null;
+        if (observation) selectFrame(observation.index).catch(renderError);
+      });
+      canvas.addEventListener("pointercancel", () => { drag = null; });
+      canvas.addEventListener("pointerleave", () => { tooltip.hidden = true; });
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault(); zoom = Math.max(.35, Math.min(5, zoom * Math.exp(-event.deltaY * .001))); draw();
+      }, {passive: false});
+      canvas.addEventListener("dblclick", () => { yaw = -.65; pitch = .45; zoom = 1; draw(); });
+      canvas.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft") yaw -= .12;
+        else if (event.key === "ArrowRight") yaw += .12;
+        else if (event.key === "ArrowUp") pitch = Math.min(1.35, pitch + .10);
+        else if (event.key === "ArrowDown") pitch = Math.max(-1.35, pitch - .10);
+        else if (["+", "="].includes(event.key)) zoom = Math.min(5, zoom * 1.1);
+        else if (event.key === "-") zoom = Math.max(.35, zoom / 1.1);
+        else return;
+        event.preventDefault(); draw();
+      });
+      const observer = new ResizeObserver(draw); observer.observe(container);
+      draw();
+      return {draw};
+    }
+    async function createPlots() {
+      if (typeof Plotly === "undefined") throw new Error("本地绘图库未加载，请检查 /plotly.min.js 是否可访问");
+      const measured = frames.map((frame) => frame.xyz_m);
+      const rejected = valid.map((accepted, index) => !accepted && finiteXYZ(raw[index]));
+      const indices = frames.map((_, index) => index);
+      const hover = frames.map((frame) => [frame.frame_index, frame.time_s]);
+      const sharedFont = {family: "system-ui, sans-serif", color: "#334c5d", size: 11};
+      const plotConfig = {responsive: true, displaylogo: false, scrollZoom: true,
+        modeBarButtonsToRemove: ["lasso2d", "select2d"]};
+      const spatialTraces = [
+        {type: "scatter3d", mode: "lines+markers", name: "有效观测", connectgaps: false,
+          x: pointValues(measured, 0, valid), y: pointValues(measured, 1, valid), z: pointValues(measured, 2, valid),
+          line: {color: colors[0], width: 4}, marker: {color: colors[0], size: 2}, customdata: indices,
+          text: hover.map(([frame, time]) => "帧 " + frame + " · " + time.toFixed(3) + " s"),
+          hovertemplate: "%{text}<br>X %{x:.4f} m<br>Y %{y:.4f} m<br>Z %{z:.4f} m<extra>有效观测</extra>"},
+        {type: "scatter3d", mode: "markers", name: "拒绝的原始位置",
+          x: pointValues(raw, 0, rejected), y: pointValues(raw, 1, rejected), z: pointValues(raw, 2, rejected),
+          marker: {color: rejectedColor, symbol: "x", size: 4}, customdata: indices,
+          text: hover.map(([frame, time]) => "帧 " + frame + " · " + time.toFixed(3) + " s"),
+          hovertemplate: "%{text}<br>X %{x:.4f} m<br>Y %{y:.4f} m<br>Z %{z:.4f} m<extra>原始位置 · 未接受</extra>"},
+        {type: "scatter3d", mode: "markers", name: "当前帧", showlegend: false, x: [], y: [], z: [],
+          marker: {color: "#233745", size: 6}, hoverinfo: "skip"}
+      ];
+      const spatialLayout = {margin: {l: 0, r: 0, t: 5, b: 0}, paper_bgcolor: "#fff", font: sharedFont,
+        legend: {x: .015, y: 1, font: {size: 11}, bgcolor: "rgba(255,255,255,.7)"},
+        uirevision: "keep-camera", scene: {aspectmode: "data", camera: {eye: {x: 1.4, y: -1.65, z: .9}},
+          xaxis: {title: {text: "X (m)"}}, yaxis: {title: {text: "Y (m)"}}, zaxis: {title: {text: "Z (m)"}}}};
+      const timeTraces = [];
+      for (let component = 0; component < 3; component++) {
+        const suffix = component ? String(component + 1) : "";
+        const axis = "XYZ"[component];
+        timeTraces.push({type: "scatter", mode: "lines+markers", name: axis, showlegend: false,
+          x: times, y: pointValues(measured, component, valid), xaxis: "x" + suffix, yaxis: "y" + suffix,
+          connectgaps: false, line: {color: colors[component], width: 1.5}, marker: {size: 3},
+          customdata: indices, text: hover.map(([frame]) => "帧 " + frame),
+          hovertemplate: "%{text}<br>%{x:.3f} s<br>" + axis + " %{y:.4f} m<extra>有效观测</extra>"});
+        timeTraces.push({type: "scatter", mode: "markers", name: "原始 " + axis, showlegend: false,
+          x: times, y: pointValues(raw, component, rejected), xaxis: "x" + suffix, yaxis: "y" + suffix,
+          marker: {color: rejectedColor, symbol: "x", size: 6}, customdata: indices,
+          text: hover.map(([frame]) => "帧 " + frame),
+          hovertemplate: "%{text}<br>%{x:.3f} s<br>" + axis + " %{y:.4f} m<extra>原始位置 · 未接受</extra>"});
+      }
+      const shapes = invalidIntervals().map(([left, right]) => ({type: "rect", xref: "x", yref: "paper",
+        x0: left, x1: right, y0: 0, y1: 1, fillcolor: "rgba(229,178,105,.20)", line: {width: 0}, layer: "below"}));
+      cursorShapeIndex = shapes.length;
+      shapes.push({type: "line", xref: "x", yref: "paper", x0: times[0] || 0, x1: times[0] || 0,
+        y0: 0, y1: 1, line: {color: "#344c5c", width: 1}, layer: "above"});
+      const axisStyle = {gridcolor: "#e5ecf0", zerolinecolor: "#d5e0e7", ticks: "outside", tickfont: {size: 10}};
+      const timeLayout = {margin: {l: 65, r: 20, t: 10, b: 38}, font: sharedFont, paper_bgcolor: "#fff",
+        plot_bgcolor: "#fff", hovermode: "closest", uirevision: "keep-time-range", shapes,
+        xaxis: {...axisStyle, anchor: "y", matches: "x3", showticklabels: false},
+        xaxis2: {...axisStyle, anchor: "y2", matches: "x3", showticklabels: false},
+        xaxis3: {...axisStyle, anchor: "y3", title: {text: "相对时间 (s)", standoff: 5}},
+        yaxis: {...axisStyle, domain: [.72, 1], title: {text: "X (m)", standoff: 4}},
+        yaxis2: {...axisStyle, domain: [.36, .64], title: {text: "Y (m)", standoff: 4}},
+        yaxis3: {...axisStyle, domain: [0, .28], title: {text: "Z (m)", standoff: 4}}};
+      const spatial = byId("plot-3d");
+      async function createSpatial() {
+        if (supportsWebGL()) {
+          try {
+            await Plotly.newPlot(spatial, spatialTraces, spatialLayout, plotConfig);
+            if (/WebGL is not supported/i.test(spatial.textContent)) throw new Error("WebGL unavailable");
+            spatial.dataset.renderer = "webgl";
+            window.markerReview.renderer = "webgl";
+            return;
+          } catch (_) { Plotly.purge(spatial); }
+        }
+        software3D = createSoftware3D();
+      }
+      await Promise.all([createSpatial(), Plotly.newPlot(byId("plot-time"), timeTraces, timeLayout, plotConfig)]);
+      plotsReady = true;
+      for (const id of software3D ? ["plot-time"] : ["plot-3d", "plot-time"]) {
+        byId(id).on("plotly_click", (event) => {
+          const index = event.points?.[0]?.customdata;
+          if (Number.isInteger(index)) selectFrame(index).catch(renderError);
+        });
+      }
+      if (!software3D) spatial.on("plotly_webglcontextlost", () => {
+        Plotly.purge(spatial);
+        software3D = createSoftware3D();
+      });
+    }
+    function svgElement(name, attributes = {}, text) {
+      const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+      for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+    function drawMarkers(frame, width, height) {
+      const svg = byId("marker-overlay");
+      svg.replaceChildren();
+      svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+      const boxes = [], fontSize = Math.max(13, width / 55), labelHeight = fontSize + 10;
+      const intersects = (a, b) => a.x < b.x + b.width + 3 && a.x + a.width + 3 > b.x &&
+        a.y < b.y + b.height + 3 && a.y + a.height + 3 > b.y;
+      for (const detection of frame.detections || []) {
+        const corners = detection.corners;
+        if (!Array.isArray(corners) || corners.length !== 4 ||
+            !corners.every((point) => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))) continue;
+        const selected = Boolean(detection.selected), color = selected ? "#28e2bf" : "#ffbd69";
+        svg.append(svgElement("polygon", {points: corners.map((point) => point.join(",")).join(" "),
+          fill: "none", stroke: color, "stroke-width": Math.max(2, width / 420), "data-marker-id": detection.id,
+          "data-selected": String(selected)}));
+        const label = "ID " + String(detection.id) + " · " + (selected ? "主手" : "未采用");
+        const text = svgElement("text", {"font-size": fontSize, "font-family": "system-ui, sans-serif",
+          "font-weight": 650, fill: color}, label);
+        svg.append(text);
+        const labelWidth = Math.ceil(text.getComputedTextLength()) + 10;
+        const left = Math.max(0, Math.min(Math.min(...corners.map((point) => point[0])), width - labelWidth));
+        const top = Math.min(...corners.map((point) => point[1])), bottom = Math.max(...corners.map((point) => point[1]));
+        let box = {x: left, y: Math.max(0, top - labelHeight - 4), width: labelWidth, height: labelHeight}, placed = false;
+        for (let offset = 0; offset < height && !placed; offset += labelHeight + 4) {
+          for (const y of [top - labelHeight - 4 - offset, bottom + 4 + offset]) {
+            const candidate = {x: left, y, width: labelWidth, height: labelHeight};
+            if (y >= 0 && y + labelHeight <= height && !boxes.some((other) => intersects(candidate, other))) {
+              box = candidate; placed = true; break;
+            }
+          }
+        }
+        boxes.push(box);
+        svg.insertBefore(svgElement("rect", {...box, rx: 1, fill: "rgba(15,30,38,.86)"}), text);
+        text.setAttribute("x", box.x + 5);
+        text.setAttribute("y", box.y + fontSize + 3);
+      }
+    }
+    function previewPath(value) {
+      if (typeof value !== "string" || !value.startsWith("frames/")) return null;
+      const parts = value.split("/");
+      if (parts.some((part) => !part || part === "." || part === ".." || part.includes("\\"))) return null;
+      return "/" + parts.map(encodeURIComponent).join("/");
+    }
+    function showImage(frame) {
+      const sequence = ++imageRequest, image = byId("frame-image"), path = previewPath(frame.preview);
+      image.hidden = true;
+      byId("marker-overlay").replaceChildren();
+      byId("no-preview").hidden = false;
+      byId("image-stage").dataset.preview = path ? "loading" : "missing";
+      byId("no-preview").textContent = path ? "正在读取图像…" : "此帧没有图像预览\n轨迹与诊断信息仍可查看";
+      if (!path) return Promise.resolve();
+      return new Promise((resolve) => {
+        const loaded = new Image();
+        loaded.onload = () => {
+          if (sequence === imageRequest) {
+            image.src = path;
+            image.alt = "第 " + frame.frame_index + " 帧相机图像";
+            image.hidden = false;
+            byId("no-preview").hidden = true;
+            byId("image-stage").dataset.preview = "loaded";
+            drawMarkers(frame, loaded.naturalWidth, loaded.naturalHeight);
+          }
+          resolve();
+        };
+        loaded.onerror = () => {
+          if (sequence === imageRequest) {
+            byId("image-stage").dataset.preview = "error";
+            byId("no-preview").textContent = "此帧图像无法读取\n" + frame.preview;
+          }
+          resolve();
+        };
+        loaded.src = path;
+      });
+    }
+    async function selectFrame(index) {
+      if (!frames.length) return;
+      const numeric = Number(index);
+      if (!Number.isFinite(numeric)) throw new Error("帧序列索引必须是有限数值");
+      currentIndex = Math.max(0, Math.min(Math.trunc(numeric), frames.length - 1));
+      window.markerReview.index = currentIndex;
+      const frame = frames[currentIndex], accepted = valid[currentIndex];
+      const point = accepted ? frame.xyz_m : raw[currentIndex];
+      byId("frame-slider").value = String(currentIndex);
+      byId("frame-number").value = String(frame.frame_index);
+      byId("frame-time").value = frame.time_s.toFixed(3);
+      byId("frame-count").textContent = "序列 " + (currentIndex + 1) + " / " + frames.length;
+      byId("previous-frame").disabled = currentIndex === 0;
+      byId("next-frame").disabled = currentIndex === frames.length - 1;
+      byId("frame-details").dataset.valid = String(accepted);
+      byId("frame-summary").textContent = "帧 " + frame.frame_index + " · " + frame.time_s.toFixed(3) + " s · " +
+        (accepted ? "有效" : "无效") + " · marker " + ((frame.marker_ids || []).join(", ") || "无");
+      byId("frame-position").textContent = finiteXYZ(point) ? (accepted ? "XYZ" : "原始 XYZ（未接受）") +
+        " = (" + point.map((value) => value.toFixed(4)).join(", ") + ") m" : "XYZ 缺失";
+      const reasons = !accepted && ["ok", "accepted"].includes(frame.reason) ? [] : [reasonText(frame.reason)];
+      reasons.push(...(frame.quality?.issues || []).map(reasonText));
+      byId("frame-reason").textContent = [...new Set(reasons)].join("；");
+      const metrics = [];
+      if (Number.isFinite(frame.quality?.raw_speed_m_s)) metrics.push("原始相对速度 " + frame.quality.raw_speed_m_s.toFixed(3) + " m/s");
+      if (Number.isFinite(frame.reprojection_error_px)) metrics.push("重投影误差 " + frame.reprojection_error_px.toFixed(3) + " px");
+      byId("frame-metrics").textContent = metrics.join(" · ");
+      const tasks = [showImage(frame)];
+      if (plotsReady) {
+        const present = finiteXYZ(point);
+        if (software3D) software3D.draw();
+        else tasks.push(Plotly.restyle(byId("plot-3d"), {x: [present ? [point[0]] : []],
+          y: [present ? [point[1]] : []], z: [present ? [point[2]] : []],
+          "marker.color": accepted ? "#233745" : rejectedColor}, [2]));
+        tasks.push(Plotly.relayout(byId("plot-time"), {
+          ["shapes[" + cursorShapeIndex + "].x0"]: frame.time_s,
+          ["shapes[" + cursorShapeIndex + "].x1"]: frame.time_s
+        }));
+      }
+      await Promise.all(tasks);
+    }
+    function nearestIndex(values, value) {
+      let closest = 0;
+      for (let index = 1; index < values.length; index++) {
+        if (Math.abs(values[index] - value) < Math.abs(values[closest] - value)) closest = index;
+      }
+      return closest;
+    }
+    function connectControls() {
+      const choose = (index) => selectFrame(index).catch(renderError);
+      byId("frame-slider").addEventListener("input", (event) => choose(Number(event.target.value)));
+      byId("previous-frame").addEventListener("click", () => choose(currentIndex - 1));
+      byId("next-frame").addEventListener("click", () => choose(currentIndex + 1));
+      byId("next-invalid").addEventListener("click", () => {
+        const later = valid.findIndex((accepted, index) => !accepted && index > currentIndex);
+        const next = later >= 0 ? later : valid.findIndex((accepted) => !accepted);
+        if (next >= 0) choose(next);
+      });
+      byId("frame-number").addEventListener("change", (event) => {
+        if (event.target.value !== "" && Number.isFinite(event.target.valueAsNumber)) {
+          choose(nearestIndex(frames.map((frame) => frame.frame_index), event.target.valueAsNumber));
+        }
+      });
+      byId("frame-time").addEventListener("change", (event) => {
+        if (event.target.value !== "" && Number.isFinite(event.target.valueAsNumber)) choose(nearestIndex(times, event.target.valueAsNumber));
+      });
+      byId("parameters-button").addEventListener("click", () => byId("parameters-dialog").showModal());
+      byId("close-parameters").addEventListener("click", () => byId("parameters-dialog").close());
+    }
+    async function initialize() {
+      [analysis, frames] = await Promise.all([fetchJSON("/api/analysis"), fetchJSON("/api/frames")]);
+      if (!analysis || Array.isArray(analysis) || typeof analysis !== "object" || !Array.isArray(frames)) {
+        throw new Error("analysis 必须是对象，frames 必须是逐帧列表");
+      }
+      if (!frames.every((frame) => frame && Number.isInteger(frame.frame_index) && Number.isFinite(frame.time_s))) {
+        throw new Error("逐帧数据缺少有效的 frame_index 或 time_s");
+      }
+      if (new Set(frames.map((frame) => frame.frame_index)).size !== frames.length) throw new Error("原始帧号重复");
+      // Original timestamp_ns fields are never read or used for JavaScript time arithmetic.
+      times = frames.map((frame) => frame.time_s);
+      valid = frames.map((frame) => Boolean(frame.valid) &&
+        Boolean(frame.quality && Object.hasOwn(frame.quality, "valid") ? frame.quality.valid : true) && finiteXYZ(frame.xyz_m));
+      raw = frames.map((frame) => frame.raw_xyz_m === null || frame.raw_xyz_m === undefined ? frame.xyz_m : frame.raw_xyz_m);
+      window.markerReview = {frames, analysis, selectFrame, index: -1};
+      renderSummary();
+      connectControls();
+      await createPlots();
+      if (frames.length) {
+        byId("frame-slider").max = String(frames.length - 1);
+        for (const id of ["frame-slider", "frame-number", "frame-time"]) byId(id).disabled = false;
+        byId("frame-number").min = String(Math.min(...frames.map((frame) => frame.frame_index)));
+        byId("frame-number").max = String(Math.max(...frames.map((frame) => frame.frame_index)));
+        byId("frame-time").min = String(Math.min(...times));
+        byId("frame-time").max = String(Math.max(...times));
+        byId("next-invalid").disabled = valid.every(Boolean);
+        await selectFrame(0);
+      } else {
+        byId("no-preview").textContent = "该结果没有视频帧\n请查看 episode 结论与原因";
+        byId("image-stage").dataset.preview = "missing";
+        byId("frame-count").textContent = "0 帧";
+      }
+      document.body.dataset.ready = "true";
+    }
+    initialize().catch(renderError);
+  </script>
+</body>
+</html>

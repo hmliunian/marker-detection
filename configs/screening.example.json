@@ -1,0 +1,22 @@
+{
+  "activity": {
+    "open_reference_raw": 102.0,
+    "open_reference_m": 0.102,
+    "motion_fraction": 0.08,
+    "contact_threshold": 0.5,
+    "min_position_duration_s": 0.2,
+    "min_contact_duration_s": 0.1
+  },
+  "quality": {
+    "max_gap_s": 0.5,
+    "min_coverage": 0.9,
+    "max_anomalous_frames": 0,
+    "min_valid_frames": 3
+  },
+  "pose": {
+    "max_linear_speed_mps": 1.5,
+    "max_angular_speed_degps": 360.0,
+    "max_reprojection_error_px": 1.0,
+    "stereo_sync_slop_sec": 0.005
+  }
+}

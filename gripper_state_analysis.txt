@@ -1,0 +1,139 @@
+UMI marker 数据、夹爪 position 与触觉辅助判断总结
+分析日期：2026-10-13
+
+结论
+
+已检查的数值、同步视频和触觉证据支持：每只 UMI 夹爪的 position 可以作为一个连续的开合 state。数值较大对应较大开度，接近 0 对应闭合或很小开度。夹持物体时，position 可以稳定在中间值。
+
+触觉可以辅助判断是否发生接触，并与视频共同支持夹持判断。触觉为零不能单独证明夹爪张开或没有夹住物体。每爪一维 position 与触觉接触信息应分别保存。
+
+1. 数据来源与目录
+
+原始数据入口：/home/xuran/projects/data_review/datasets
+该目录指向：/data/xuran/datasets
+本次 100 条样本来源：dataset_h200_150h 中 project_id=224 的 UMI-marker 数据。
+抽样范围：56995 条符合项目条件的记录；随机种子 20261013；选取 100 条。
+样本目录：/home/xuran/projects/umi_marker/dataset
+100 条导出的 head.mp4 均检查过代表帧，能够看到夹爪上的黑白方形 marker。
+
+每条样本以 episode_id 为目录名，包含：
+  head.mp4：从原 MCAP 提取的头部左目视频，H.264 无损封装。
+  <episode_id>.json：原始采集元数据。
+  metadata.json：平台元数据。
+  task.json：任务定义。
+  selection.json：抽样记录与任务字段。
+  preview.jpg、export.json：预览与导出来源、时间戳等信息。
+
+原始 episode.mcap 未复制到上述 100 条样本目录中；原始路径可由 manifest.json 的 samples[].source_directory 找到。position 和触觉均从这些原始 MCAP 解码。
+
+2. 任务类型可以直接获得
+
+manifest.json/selection.json 中有 action_id、action_name、action_text、task_code；task.json 中可读取任务结构类型。本批 100 条的结构类型都是 atomic，覆盖 16 个动作类别。
+
+类别及条数：拿起 5、放下 7、搬运 7、拉 4、推 8、挂 7、倒液体 4、按按钮 12、擦拭 9、插入 2、旋转 3、舀 5、搅拌 6、翻转 6、关闭 9、打开 6。
+
+任务动作类别与夹爪开合不是同一个标签。例如“打开柜门”是任务类别，不代表夹爪本身处于张开状态。
+
+3. position 的实际结构
+
+左右夹爪各有一条标量时间序列，每条消息只有一个 j0.position。foxglove.JointStates 是消息的封装名称；这里的数据内容符合单自由度夹爪开度的形式。
+
+98 条样本使用：
+  /observation/left_gripper/gripper/joint_position
+  /observation/right_gripper/gripper/joint_position
+另外 2 条使用：
+  /observation/left_gripper/joints
+  /observation/right_gripper/joints
+
+全部 100 条均有左右 position。左爪共 86719 个数值，范围 0–102.855835；右爪共 86733 个数值，范围 0–102.164337。采样频率约 100 Hz，时间戳单调，position 均有实际序列化数据且为有限值。
+
+相邻 position 最大变化量：左爪 11.0794，右爪 10.4146。此统计描述变化幅度，本身不构成机械速度限制或传感器精度认证。
+
+完整序列保存于：
+  /home/xuran/projects/umi_marker/dataset/gripper_data/<episode_id>.json
+按 head.mp4 视频帧对齐的 position 保存于：
+  /home/xuran/projects/umi_marker/dataset/gripper_data/<episode_id>_frames.csv
+全部视频合计 25582 帧。此前对齐采用最近时间戳，不插值；左/右 position 与视频的最大时间差分别约 17.317/21.919 ms。
+
+4. position 是否符合开合 state
+
+对 9 条代表样本进行了头部、左右腕部同步画面的抽查，覆盖明显开合、恒定值、中间开度夹持和 position=0 的情况。观察结果支持：
+  较大的值（抽查中约 98–103）对应明显张开。
+  接近 0 对应闭合或很小开度。
+  夹衣服、门把手、瓶子、杯子时，会出现约 6、9、12、50、73 等中间或较小的稳定值。
+
+这些是观察到的对应关系，不是已标定的统一分类阈值。物体尺寸、夹持位置不同，夹住物体时的开度也不同。不能以 position 是否等于 0、是否小于 50，直接判断所有样本是否正在夹持。
+
+某段 position 恒定可能表示一直张开、一直闭合或一直保持夹持，不能仅因没有变化就认定异常。position 的物理单位尚未从读取的 schema 中确认，暂不标注为毫米、角度或百分比。
+
+5. 触觉结构与完整检查结果
+
+原 MCAP 内存在 discover.TactileData。正常情况下，左右夹爪各有 finger0、finger1 两个指面通道；每个指面每帧包含 25 个触点，每个触点有 x/y/z 和 fx/fy/fz。
+
+本次实际解码 285230 条触觉消息，共 396 条已存在的指面时间序列；所有已读消息数与 MCAP 计数一致，触点数均为 25，数值有限，时间戳单调。按首末时间计算的平均采样频率约 58.24–83.36 Hz。
+
+触觉辅助特征：
+  sum_norm = 各触点 sqrt(fx²+fy²+fz²) 之和，用作响应强度；它不是合力。
+  sum_fz = 各触点原始 fz 之和。
+  nonzero_points = 力分量非零的触点数，未经接触阈值标定。
+这些特征的物理单位没有核实，不将其数值标成 N。
+
+6. 同步视频、position、触觉交叉证据
+
+以下触觉数字均为该爪两个指面的 sum_norm：
+
+样本 1，b6fba8b86c4c5a00e90abe52e87c456c，右爪拿起白色衬衫：
+  t=0.000 s，position=101.69，触觉=0 / 0，视频为空爪张开。
+  t=2.900 s，position=12.39，触觉约 3.88 / 4.29，视频显示夹住衣服。
+  position 变小和触觉出现响应共同支持夹持过程。
+
+样本 3，111e59f1ec050f42c1c8ae58ab9c9e51，右爪夹磨砂水杯：
+  t=3.700 s，position=73.48，触觉约 4.44 / 2.18，视频显示杯子处于夹持状态。
+  较大的中间 position 仍可对应有效夹持，固定 50 阈值不适合区分所有夹持状态。
+
+样本 9，706f6a4c82e52b686e35d61033fe9b62，左爪拉柜门：
+  t=0.700 s，position=101.56，触觉=0 / 0，视频显示张开。
+  t=2.900 s，position=6.03，触觉约 0 / 27.94，视频显示与门把手/门边接触。
+  两个指面的响应可能不对称，不宜要求两个指面都必须有响应。
+
+样本 32，4bef609c55f9136b30f0b77f4d586a2b，右爪夹白色按压瓶倒液体：
+  t=3.233 s，position=50.18，触觉=0 / 0，视频显示夹持瓶子。
+  该条现有触觉通道全程为零。零触觉无法独立否定夹持；原因尚未定位，不能直接判定是位置传感器或触觉传感器故障。
+
+7. 缺失、零值和时间间隙
+
+97 条样本有完整四个触觉通道，3 条缺部分通道：
+  #17 9f9023b351905f847da95f1fe4735a6f：缺 left_finger0。
+  #43 ca31b91e0261137e2bf92cf146be4726：缺 right_finger1。
+  #60 a1d9324b623b7b1dc6ab9cf88ccf4958：缺 left_finger0 和 left_finger1。
+
+4 条样本的所有现有触觉通道全程为零：
+  #2  37d6a87c621c4fb273bf3ee32e12df33：关闭房门。
+  #32 4bef609c55f9136b30f0b77f4d586a2b：夹白色按压瓶倒液体。
+  #38 02647acb6b364323da198c97c2632ed4：搬运木托盘。
+  #60 a1d9324b623b7b1dc6ab9cf88ccf4958：用黑色保温杯舀取，同时缺左爪两通道。
+
+396 条现有指面流中有 178 条全程为零，包括很多未参与操作的空闲夹爪；不能把这个数量直接当成故障数。
+
+部分触觉通道有时间间隙，最大约 1.86 秒。逐帧对齐表采用最近触觉时间戳；缺通道或时间差超过 50 ms 时标 available=0，特征留空。真实零响应保留数值 0。现有通道共有 257 个“指面×视频帧”配对超过 50 ms，这不是 257 条视频，也不一定是 257 个互不重复的视频帧。
+
+8. 建议如何用于状态判断
+
+每爪保留一个连续 position 作为 gripper_state，左右合计两个开度数值。保留原始值及时间戳；如需归一化，使用统一、明确的标定规则。
+
+另存触觉强度、非零触点数、每个指面的可用性和时间差，作为接触辅助信息。有效且持续的触觉响应可支持接触判断；结合物体位于夹指之间的视频，才进一步支持物体夹持判断。接触也可能来自环境或两指自身。
+
+若后续需要离散“开/闭”、是否夹持或二值 action，需先明确标签语义，再设计阈值、滞回及不确定状态。当前读取的是观测 position 与触觉，不能据此唯一恢复操作者原始的二值控制意图。
+
+9. 证据位置与结论范围
+
+详细分析目录：/home/xuran/projects/umi_marker/dataset/gripper_state_review
+  assessment.json：机器可读结论与限制。
+  index.csv：100 条样本的 position 范围和各触觉通道质量。
+  position_and_video/：position 统计、9 张视频对照图及时间戳。
+  tactile/inventory.json：MCAP 来源、通道与触觉 schema。
+  tactile/summary.json：全部触觉统计和抽查时刻数据。
+  tactile/frames/<episode_id>_frames.csv：逐视频帧对齐的 position、四个指面触觉特征和可用性。
+  README.txt、checksums.sha256：字段说明与文件校验。
+
+这些证据支持“position 符合每爪一维连续开度 state，触觉可辅助判断接触”的结论。视频只抽查了 9 条代表样本，没有建立全部 100 条逐帧人工真值，因此不能给出全数据集的开合识别准确率。本次分析未自动生成离散状态标签。
