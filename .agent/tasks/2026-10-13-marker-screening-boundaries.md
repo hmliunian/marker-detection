@@ -2,7 +2,7 @@
 
 日期：2026-10-13。
 
-状态：首轮实现和纯SSH网页修复均已完成，用户授权的 multi-agent 实现、集成与小样本验收已执行。原 READY 边界继续适用，详细结果见 `VALIDATION.md`。用户补充的Git作者信息已在本仓库配置，首次提交及指定分支普通推送纳入本次交付。
+状态：首轮实现和纯SSH网页修复均已完成，用户授权的 multi-agent 实现、集成与小样本验收已执行。原 READY 边界继续适用，详细结果见 `VALIDATION.md`。Git作者已在本仓库配置，本地首次提交完成；指定分支推送被GitLab首次提交权限拒绝，需Maintainer处理远端初始化。
 
 ## 2026-10-13 SSH GUI 与首次推送修复边界
 
@@ -91,3 +91,4 @@
 - Firefox首次截图暴露无WebGL时三维空白，随后实现Canvas回退并重新实测。正常零触觉、拿起误检和第三方714共3组浏览器验收通过：图像/帧联动、无效帧跳转与回绕、XYZ缺失断线、三维绘制像素和鼠标旋转均通过；截图保存为各结果目录的`web-review.png`。
 - `just check`通过，21个Python文件格式通过；`just test`共161项通过。离线wheel重新构建为`artifacts/ssh-gui-package/`，共17文件，最终HTML、web入口和参考配置均在包内且可独立加载。源码数据算法与已有分析JSON未修改。
 - 用户提供的`Xuran Yao <635301928@qq.com>`已仅写入本仓库Git配置。首次提交范围包含已有暂存项目和本次修复，原始5份文档/分析内容保持不变；`.venv/`、`.tools/`、`artifacts/`不纳入提交。按用户命令普通推送`origin/feat/umi-check`，最终Git结果以本地HEAD与远端分支核对为准。
+- Git实际结果：首次提交`f19d54c`成功，作者与用户给定一致，37个项目文件纳入提交；暂存空白检查通过，原始5个blob保持一致。随后`git push --set-upstream origin feat/umi-check`被远端pre-receive hook拒绝，提示默认分支受保护、当前角色不能推送initial commit，要求Maintainer完成首次推送。再次`git ls-remote --heads origin`成功且结果为空，确认没有远端分支；未force、未改保护规则或绕过角色权限。此记录以单独文档提交保存。
