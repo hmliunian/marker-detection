@@ -2,7 +2,7 @@
 
 更新日期：2026-10-13。
 
-本文件保存项目目标、数据契约、验收要求及尚待解决的业务决定。算法参考见 [README.md](README.md)，输入事实见 [UMI_INPUT_FORMAT.md](UMI_INPUT_FORMAT.md)，运行方法见 [USAGE.md](USAGE.md)，验证结果见 [VALIDATION.md](VALIDATION.md)。本轮任务记录见 [.agent/tasks/2026-10-13-marker-screening-boundaries.md](.agent/tasks/2026-10-13-marker-screening-boundaries.md)。
+本文件保存项目目标、数据契约、验收要求及尚待解决的业务决定。项目入口见 [README.md](README.md)，算法参考见 [ALGORITHM.md](ALGORITHM.md)，输入事实见 [UMI_INPUT_FORMAT.md](UMI_INPUT_FORMAT.md)，运行方法见 [USAGE.md](USAGE.md)，验证结果见 [VALIDATION.md](VALIDATION.md)。本轮任务记录见 [.agent/tasks/2026-10-13-marker-screening-boundaries.md](.agent/tasks/2026-10-13-marker-screening-boundaries.md)。
 
 当前状态：**READY（首轮独立实现的业务边界、修改范围和验证计划已明确）**。action 为头部左相机系下 target 的绝对三维位置，按整条 episode 筛选。用户已确认采用参考配置的 marker 尺寸；新格式按现有文档编写，真实新格式数据验收延后。首轮以逐帧 XYZ 连续性和 GUI 轨迹展示为核对基准，允许 AI 辅助判断。阈值数值通过实验确定。本文件记录开发边界，不表示算法、GUI 或实验已经完成。
 
@@ -14,7 +14,7 @@
 
 1. 接受 MCAP 路径，兼容旧 FlatBuffer 与新 ROS2 CDR 消息；按实际 schema 和 channel 编码识别格式。当前使用旧格式实测，新格式依据已有文档实现并做契约检查，不要求当前提供真实新格式样本。旧格式需要的采集 JSON、相机标定和任务信息必须能追溯来源。
 2. 根据左右夹爪的触觉、position 等观测识别参与操作的手。搬运任务单独标记，暂不进入单手 action 结果；非搬运出现双手参与则剔除，不转为双手输出。
-3. 为确定的主控手选择对应 marker 支架，依据 README 所述 AprilTag、PnP 和双目消歧流程计算位姿。允许同一支架不同 tag 面轮流可见，不固定追踪一张 tag。
+3. 为确定的主控手选择对应 marker 支架，依据 ALGORITHM.md 所述 AprilTag、PnP 和双目消歧流程计算位姿。允许同一支架不同 tag 面轮流可见，不固定追踪一张 tag。
 4. 对主控手出画、位姿缺失、身份不确定及异常波动记录证据；由可配置的实验参数决定有效性。主控手丢失时，不能改用另一只手或第三方夹爪的位姿补齐。
 5. 输出左／右手标识及三维 action `(x, y, z)`，单位为米，使用头部左相机光学坐标系、沿用 tinynav 配置的 target 点。它是绝对位置，不是帧间增量；姿态可用于内部求解和质量检查，但不属于首轮 action 必需输出。保存时间戳、坐标系、有效性、原因、参数和来源记录。
 6. 主控手缺失或异常超过实验阈值时，整条 episode 判为不合格；不通过截取子片段使其进入合格结果。无效帧和诊断轨迹仍保留，方便 GUI 审核；原始数据不删除。

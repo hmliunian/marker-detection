@@ -1,203 +1,180 @@
-# Marker 检测与位姿估计算法
+# UMI Marker 数据筛选
 
-本文整理 TinyNav UMI 的 marker 算法：AprilTag 3 从图像中识别标签 ID 和四个角点，OpenCV PnP 与 Ceres 再估计支架的位置和朝向。
-说明依据 `tinynav-umi` 提交 `954abdc7f42e5f912f201727fcb8ca26a0ac1e2d`；下列行号对应该版本。
+从 UMI 录制数据中找出参与操作的手，计算夹爪的三维位置，并判断整段操作数据是否满足筛选条件。
 
-## 核心算法的绝对路径
-
-**项目核心实现集中在这个文件：**
+输入是一个 **MCAP 文件**或**包含一个 MCAP 的 ZIP**。程序结合夹爪开度、触觉和 AprilTag 图像观测，输出逐帧位置、筛选原因，以及可以在浏览器中查看的轨迹。本文中的 **episode** 指一整段操作录制，**主控手**指这段操作中使用的左手或右手。
 
 ```text
-/home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp
+MCAP / ZIP → 判断主控手 → 检测 marker、计算三维位置 → 检查缺失和异常 → 导出结果、查看轨迹
 ```
 
-| 阶段 | 函数或调用 | 源码定位 |
-| --- | --- | --- |
-| 图像同步 | `subscribe_images()` / `synced_callback()` | [191 行][sync] / [297 行][callback] |
-| 加载标签尺寸与安装外参 | `load_marker_config()` | [259 行][config-loader] |
-| 相机内参、畸变和基线 | `camera_info_callback()` | [369 行][camera-info] |
-| 灰度处理、检测与筛选 | `detect()` | [378 行][detect] |
-| 调用 AprilTag 底层检测器 | `apriltag_detector_detect()` | [399 行][apriltag-call] |
-| 重投影误差 | `reprojection_error()` | [434 行][reprojection] |
-| 双目重投影残差与优化 | `StereoResidual` / `optimize_stereo()` | [493 行][stereo-residual] / [515 行][stereo-optimize] |
-| 单标签位姿候选 | `square_candidates()` | [567 行][candidates] |
-| 单标签消歧、多标签联合求解 | `solve_rig()` | [596 行][solve] |
-| 运动筛选与位姿发布 | `process_pair()` | [756 行][process] |
+筛选以整条 episode 为单位。非搬运任务中双手都参与时会被拒绝；搬运任务单独标记。无效帧保留在诊断结果中，原数据不会被删除，也不通过插值或截取片段使整条数据通过。
 
-节点启动入口的绝对路径如下；其中 `main()` 创建并运行 `MarkerRigPoseNode`：
+## 快速开始
 
-```text
-/home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.cpp
+需要 **Python 3.12 或 3.13、uv、just**。在项目根目录运行以下命令，`just setup` 会按 `uv.lock` 创建独立的 `.venv` 并安装依赖；机器已有 `.tools/bin/uv` 时会优先使用，否则使用 PATH 中的 `uv`。
+
+```bash
+# 1. 安装项目依赖
+just setup
+
+# 2. 检查输入的通道、标定和编码格式
+just inspect /path/to/episode.mcap
+
+# 3. 分析一段录制，写入新的结果目录
+just analyze /path/to/episode.mcap artifacts/demo \
+  --config configs/screening.example.json --video-backend auto
+
+# 4. 打开结果查看器
+just gui artifacts/demo
 ```
 
-标签几何、检测参数及话题配置的绝对路径：
+将 `/path/to/episode.mcap` 替换为自己的 MCAP 或 ZIP 路径。**输入数据不随仓库提供；结果目录必须不存在或为空。** 再跑一次时换一个输出目录，例如 `artifacts/demo-v2`。上面的分析命令显式加载示例配置，其最低覆盖率目前为 **85%**；不传 `--config` 时，程序默认值为 **90%**。
 
-```text
-/home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/configs/UMI_v3.json
+输入至少需要头部左相机的视频和标定。右目视频及匹配标定用于双目消歧；旧格式还需能找到对应的采集 JSON。自动定位不到采集信息时，可在 `just analyze` 后追加 `--sidecar /path/to/collection.json`。支持的通道和格式见 [输入格式说明](UMI_INPUT_FORMAT.md)；旧 FlatBuffer 已有真实数据验证，新 ROS2 CDR 当前完成了离线契约测试，真实录制验收仍待补充。
+
+### 在浏览器中查看
+
+本机运行时，执行 `just gui artifacts/demo` 后打开 **http://127.0.0.1:8765**。
+
+如果程序运行在 SSH 服务器上，保持服务器的 `just gui` 运行，在自己的电脑另开终端：
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 user@server
 ```
 
-AprilTag 的阈值分割、四边形拟合和解码由外部 `libapriltag` 实现，当前项目未包含其 `.c` 源码。
-因此，上面的绝对路径定位项目的检测调用与位姿算法；底层检测算法的官方源码链接列在文末。
-依赖声明见 [CMakeLists.txt:44][cmake]，实际部署所用库版本需在对应构建环境中核实。
+把 `user@server` 换成实际 SSH 地址，再在电脑浏览器打开 **http://127.0.0.1:8765**。使用 VS Code Remote SSH 时，也可以直接转发端口 8765。
 
-## 总体流程
+查看器支持按帧或时间定位，同时查看原始图像、marker、三维轨迹和 X/Y/Z 曲线。缺失位置会断线，原始异常候选可用于排查原因。它读取已有分析结果；修改配置后，需要重新分析并打开新的结果目录。端口被占用时用 `just gui artifacts/demo --port 8766`，并相应修改 SSH 转发端口。按 Ctrl+C 关闭服务。
 
-```mermaid
-flowchart TD
-    A[同步头部左右图像] --> B[左图转灰度]
-    B --> C[局部阈值分割与边界提取]
-    C --> D[四边形拟合与边缘细化]
-    D --> E[透视采样与标签 ID 解码]
-    E --> F[按 ID 收集同一支架的角点]
-    F --> G{可见标签数量}
-    G -->|一个| H[IPPE 生成位姿候选]
-    H --> I{候选是否有歧义}
-    I -->|是| J[检测右图并做双目优化]
-    I -->|否| K[单目 LM 细化]
-    G -->|多个| L[SQPnP 联合求解与 LM 细化]
-    J --> M[重投影误差与运动检查]
-    K --> M
-    L --> M
-    M --> N[发布左相机坐标系下的目标位姿]
+## 常用 just 命令
+
+以下命令均在项目根目录执行。`INPUT` 表示 MCAP/ZIP 路径，`OUTPUT` 表示结果目录，实际使用时替换为自己的路径。
+
+| 命令 | 用途 |
+| --- | --- |
+| `just --list` | 列出所有可用命令。 |
+| `just setup` | 按锁文件安装依赖。 |
+| `just inspect INPUT` | 只读检查输入格式、通道、标定和缺失信息。 |
+| `just analyze INPUT OUTPUT` | 分析完整 episode，导出结果；使用程序默认参数。 |
+| `just analyze INPUT OUTPUT --config configs/screening.example.json` | 使用指定 JSON 中的参数分析。 |
+| `just gui OUTPUT` | 启动本地网页查看器，默认端口 8765。 |
+| `just gui-native OUTPUT` | 启动 Qt 桌面查看器，需要图形桌面或 X11 转发。 |
+| `just check` | 检查 Python 代码风格和格式。 |
+| `just test` | 运行离线测试，Qt 使用离屏模式。 |
+| `just test-web OUTPUT artifacts/web-review.png --frame 100` | 用浏览器验证交互并截图；需要 Firefox、geckodriver，会按锁文件安装可选 Selenium 依赖。 |
+
+`just analyze` 还支持以下参数：
+
+| 参数 | 含义 |
+| --- | --- |
+| `--config FILE` | 读取 `activity`、`quality`、`pose` 配置；兼容旧名称 `--settings`。 |
+| `--sidecar FILE` | 显式指定旧格式采集 JSON。 |
+| `--geometry FILE` | 指定 marker 几何配置，默认使用项目自带的 `UMI_v3.json`。 |
+| `--video-backend auto` | 默认后端；尝试 CUDA 解码，失败后记录原因并回退 CPU。 |
+| `--video-backend cpu` | 使用 CPU 解码，可用于无显卡环境。 |
+| `--video-backend cuda --gpu 0` | 严格使用指定显卡解码，失败时报错；显卡编号从 0 开始。 |
+
+GPU 加速的阶段是视频解码。AprilTag 检测、PnP 位姿求解和双目优化在 CPU 上执行。
+
+## 修改筛选配置
+
+编辑 [configs/screening.example.json](configs/screening.example.json)，或复制一份作为自己的配置。JSON 按用途分为三部分：`activity` 判断哪只手在操作，`pose` 控制逐帧位姿求解，`quality` 控制轨迹质量与整条 episode 的筛选。
+
+只调整质量阈值时，可以使用这样的 JSON：
+
+```json
+{
+  "quality": {
+    "min_coverage": 0.85,
+    "max_missing_frame_ratio": null,
+    "max_gap_s": 0.5,
+    "max_anomalous_frames": 0,
+    "min_valid_frames": 3
+  }
+}
 ```
 
-没有配置内的标签可见、求解失败或质量检查未通过时，该支架在这一帧不发布位姿。
+**配置文件只有通过 `--config` 指定才会加载；未填写的字段沿用程序默认值。** 每次实际生效的完整参数都保存在结果的 `analysis.json` 中。
 
-## 1. 图像预处理与同步
+| 配置项 | 控制什么 | 程序默认值 | 当前示例文件 |
+| --- | --- | ---: | ---: |
+| `min_coverage` | 有效帧占比和有效时长占比的下限，两项都要达到。 | `0.9`（90%） | `0.85`（85%） |
+| `max_missing_frame_ratio` | 缺失帧占总帧数的上限。`0.1` 表示最多 10%，`null` 关闭这一项额外限制。 | `null` | `null` |
+| `max_gap_s` | 最长一次连续无效的时长上限，单位秒，包含开头和结尾的缺失。 | `0.5` | `0.5` |
+| `max_anomalous_frames` | 整条 episode 允许的异常帧数量。异常可来自几何不一致、身份歧义或位置跳变等。 | `0` | `0` |
+| `min_valid_frames` | 判断轨迹至少需要的有效帧数量；不足且未触发拒绝条件时标为待审核。 | `3` | `3` |
 
-节点通过 `ApproximateTime` 同步左右图像，当前同步容差为 `0.005 s`。标定信息到齐后，先对左图执行检测。
-NV12 直接使用 Y 亮度平面，`mono8` / `8UC1` 直接作为灰度图，RGB/BGR 转换为灰度图。
-图像按检测倍率缩放；输出角点再除以相同倍率，还原到原图坐标，以便使用原图内参求解。
+这里的“缺失帧”包含未得到位姿和未通过质量检查的帧，按 `(总帧数 - 有效帧数) / 总帧数` 计算。它与帧覆盖率互补，例如缺失 ≤10% 对应帧覆盖率 ≥90%；覆盖率还会检查有效时长，`max_gap_s` 则检查缺失是否集中在一段时间内。
 
-当前 `UMI_v3.json` 的 `image_scale_override=1.0` 覆盖了 `marker_geometry.image_scale=2.0`。
-按该文件加载节点参数时，有效倍率是 **1.0**；运行时额外的参数覆盖可能改变此值。
+所有启用的条件都要满足。例如，覆盖率已经达标，但有 1 帧异常且 `max_anomalous_frames=0`，整条 episode 仍会被拒绝。放宽 episode 阈值不会把无效帧改成有效位姿。更多参数与时间计算约定见 [USAGE.md](USAGE.md#参数与-gpu)。
 
-## 2. 寻找候选四边形
+## 怎么读结果
 
-AprilTag 使用局部亮度范围建立阈值，可概括为 `T = (I_max + I_min) / 2`，把高对比度区域分为黑、白两类。
-随后计算连通区域，将相邻黑白区域之间的边界点聚成候选边界。
+每次分析会在输出目录生成：
 
-边界点按环绕顺序排列并分为四段，各段拟合直线，相邻直线求交得到四个角点。
-面积、拟合误差和形状检查会淘汰不合格候选。平面正方形斜拍后可以变成一般四边形，因此不要求候选在图像中仍是正方形。
+| 文件 | 用途 |
+| --- | --- |
+| `analysis.json` | 整条结论、主控手、拒绝原因、覆盖率、最长缺失、配置和数据来源。 |
+| `actions.csv` | 逐帧三维位置，含 `frame_valid` 和 `episode_accepted`，方便后续筛选使用。 |
+| `frames.json` | 完整帧时间轴、原始/有效位姿、marker 观测及质量诊断。 |
+| `frames/*.jpg` | 查看器使用的图像预览。 |
 
-启用 `refine_edges` 时，检测器沿候选边的法向搜索灰度变化，重新拟合边线和交点，以提高角点精度。
-四边形检测见官方 [apriltag_quad_thresh.c][quad-source]，边缘细化见 [apriltag.c][detector-source]。
+三维 action 为 **头部左相机光学坐标系中的 target 位置 `(x, y, z)`，单位米**。默认采用参考 marker 边长 `0.0525 m` 和安装几何；头部相机运动会反映在这条相对轨迹中。
 
-## 3. 透视采样、解码与筛选
+`analysis.json` 的 `decision` 有四种取值：
 
-四个角点确定标签平面到图像的单应矩阵 `H`。检测器通过 `H` 找到各编码格中心在原图的位置，采样亮度，并按标签周围的黑白亮度模型判定每一位。
-`tag16h5` 使用 4×4 个编码格、共 16 位；码族最小汉明距离为 5，定义见官方 [tag16h5.c][family-source]。
+| 结论 | 含义 |
+| --- | --- |
+| `accepted` | 主控手明确，整段数据通过当前筛选条件。 |
+| `rejected` | 双手参与或质量超限，整段数据不进入合格集合。 |
+| `review` | 主控手证据或有效帧不足，需要人工复核。 |
+| `excluded_carry` | 搬运任务 `A_003` 单独标记，当前不输出单臂 action。 |
 
-解码器比较采样编码与码表中的合法编码，并尝试四种旋转方向。
-汉明距离表示两串编码不同的位数；匹配成功后得到标签 ID、方向和角点顺序。
-`decision_margin` 衡量编码格亮度离黑白判定阈值的距离，不是概率。解码过程见 [apriltag.c][detector-source]。
+使用 CSV 时，同时要求 `episode_accepted=1` 和 `frame_valid=1`；无效帧的 XYZ 留空。直接读 JSON 时，有效帧须同时满足 `frame.valid` 和 `frame.quality.valid`，并检查整条结论。`raw_xyz_m` 保存诊断候选，可能包含被拒绝的跳点。
 
-项目的 `detect()` 执行以下处理：
+退出码 `0` 表示程序完成分析，是否通过要看 `decision`。输入或处理错误返回 `2`；批处理将这类情况单独记录为 `process_error`。
 
-- 要求 `hamming ≤ 1`、`decision_margin ≥ 20`。
-- 同一 ID 出现多个检测结果时，保留 `decision_margin` 最大者。
-- 将角点重排为标签方向下的左上、右上、右下、左下，并还原到原图像素坐标。
-- `solve_rig()` 只收集配置中的 ID：左手支架为 `0–3`，右手支架为 `4–7`。
+## 实验结果
 
-此阶段的结果是二维观测：`ID → 四个角点 + 解码质量`。
+2026-10-13 对 **100 条主数据 + 3 条第三方 marker 介入数据**进行了完整筛选。历史实验参数为：**覆盖率 ≥90%、连续缺失 ≤0.5 秒、异常帧容忍数 0、相对速度上限 1.5 m/s**。它与当前示例文件中的 85% 覆盖率不同。
 
-## 4. 从角点求三维位姿
+| 数据组 | 总数 | 通过 | 拒绝 | 搬运单列 | 待审核 | 处理失败 | 通过率 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 主数据 | 100 | 23 | 67 | 7 | 2 | 1 | 23.00% |
+| 第三方介入 | 3 | 0 | 3 | 0 | 0 | 0 | 0.00% |
 
-配置提供标签边长 `0.0525 m`、每张标签在支架中的安装变换 `rig_T_marker`，以及支架到输出目标的变换 `rig_T_target`。
-因此，标签角点在支架坐标系中的三维坐标已知；图像中对应的二维角点来自检测器。
+主数据剔除 7 条搬运后，通过率为 **23 / 93 = 24.73%**，分母仍包含待审核和处理失败的数据。主数据的 67 条拒绝可分为：22 条双手参与、26 条仅异常帧超限、19 条包含覆盖不足（其中部分同时有异常或连续缺失超限）。1 条处理失败来自缺少头部相机标定，单独计数。
 
-PnP 寻找旋转 `R` 和平移 `t`，让已知三维角点投影后尽量贴合检测到的像素位置：
+共 102 条成功生成分析结果，核对了 26,177 帧及对应 CSV 行；输入哈希、参数、预览和有效性一致性检查通过，7 条早期参考样本的结果一致。完整记录及复现前提见 [VALIDATION.md](VALIDATION.md#100-条主数据与-3-条第三方样本实验)。
 
-```text
-minimize Σᵢ || project(K, D, R·Pᵢ + t) − pᵢ ||²
-```
+### 放宽阈值会怎样
 
-`Pᵢ` 是三维角点，`pᵢ` 是像素角点，`K`、`D` 是相机内参和畸变参数。
-两者之间的像素差称为重投影误差。标签真实尺寸提供距离尺度，透视形变提供朝向约束。
+下面是对已保存轨迹的阈值重评估，保持主控手、位姿和逐帧有效性不变：
 
-### 单标签：IPPE 候选与双目消歧
+| 异常帧容忍数 | 最低覆盖率 | 最长连续缺失 | 主数据通过数 / 100 | 第三方通过数 / 3 |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | 90% | 0.5 s | 23 | 0 |
+| 0 | 85% | 0.5 s | 23 | 0 |
+| 2 | 90% | 0.5 s | 36 | 0 |
+| 5 | 80% | 1.0 s | 49 | 0 |
 
-`square_candidates()` 调用 `solvePnPGeneric(..., SOLVEPNP_IPPE)`，去除深度非正的解，再按左图重投影误差排序。
-平面标签可能存在两个投影相近但朝向不同的候选。当前同时满足以下条件时进入双目分支：
+单独将覆盖率改成 85%，这批数据的通过数仍为 23。更多数据通过代表筛选条件变宽；位置估计本身没有改善，也没有把被拒绝的帧补齐。当前没有逐帧三维真值，这些数字表示本批样本在指定阈值下的通过情况；3 条第三方样本不足以证明所有身份干扰都能被识别。
 
-- 两个候选的左图误差差值不超过 `0.25 px`。
-- 两个候选的旋转差至少为 `10°`。
+本机实验产物保存在 `artifacts/screening-103-20261013/`：`report.html` 可离线查看，`episodes.csv` 包含全部明细，`accepted.csv` 列出通过样本，`summary.json`、`audit.json` 和 `sensitivity.csv` 保存汇总与核对结果。**`artifacts/` 被 Git 忽略，新克隆的仓库不包含这些产物。**
 
-此时才检测右图中的同一 ID；右图未检出则放弃该帧位姿。
-对每个候选，Ceres 联合最小化左右图四个角点的重投影误差，选择优化后误差最小的结果。
-无歧义时，在左图上调用 `solvePnPRefineLM()` 细化结果。
+## 批处理与进一步阅读
 
-双目残差采用校正后的水平基线模型：`u_L = fx·X/Z + cx`，`u_R = fx·(X−b)/Z + cx`，左右共用 `v = fy·Y/Z + cy`。
-代码从 `CameraInfo` 取得 `b = −P[3]/K[0]`；该分支要求输入图像和标定与此模型一致。
+单条分析和调参使用上面的 `just analyze`。已有的 [批处理脚本](scripts/run_screening_experiment.py) 专用于 100 条主数据和 3 个第三方 ZIP，需要原始 MCAP、采集 JSON、输入清单及 CUDA 解码环境；它使用程序默认参数，不读取 `screening.example.json`。实验命令、汇总脚本的源码哈希与历史产物要求见 [验证与实验记录](VALIDATION.md#实验脚本与复现前提)。
 
-### 多标签：联合求解支架位姿
+| 位置 | 内容 |
+| --- | --- |
+| [USAGE.md](USAGE.md) | 详细参数、GPU 后端、桌面界面、截图与输出契约。 |
+| [UMI_INPUT_FORMAT.md](UMI_INPUT_FORMAT.md) | 新旧 MCAP 格式、通道及数据来源。 |
+| [ALGORITHM.md](ALGORITHM.md) | 原 README 中的 TinyNav 参考算法与源码索引。 |
+| [VALIDATION.md](VALIDATION.md) | 工程测试、真实回放、实验结果及证据限制。 |
+| [PROJECT_BOUNDARIES.md](PROJECT_BOUNDARIES.md) | 项目目标、数据语义和开发边界。 |
+| [src/marker_detection/](src/marker_detection/) | 读取、主控手判定、位姿、质量评估及 CLI/GUI 实现。 |
+| [tests/](tests/) | 离线测试和浏览器验收入口。 |
 
-将各标签四个角点通过 `rig_T_marker` 变换到同一支架坐标系，汇集所有 3D–2D 对应点。
-随后调用 `solvePnP(..., SOLVEPNP_SQPNP)` 和 `solvePnPRefineLM()`，得到 `camera_T_rig`。
-
-启用异常标签剔除时，代码比较单标签估计与联合估计的平移偏差，超过 `0.05 m` 时尝试剔除最偏离的标签并重新求解。
-这一分支使用左图角点。
-
-## 5. 结果检查与坐标系
-
-重投影误差使用角点二维距离的均方根：单目为四个或多个角点，双目为左右两组共八个角点。
-求解结果需要满足 `max_reprojection_error_px=1.0`。
-
-输出变换为：
-
-```text
-camera_T_target = camera_T_rig × rig_T_target
-```
-
-`parent_T_child` 将 child 坐标变换到 parent 坐标。当前两个 `rig_T_target` 都是单位矩阵。
-节点还比较当前候选与上次接受位姿，超过 `1.5 m/s` 或 `360°/s` 时丢弃候选。
-这些速度在相机坐标系中计算，反映目标相对相机的运动。
-
-最终通过 `/arm/left/pose_state` 和 `/arm/right/pose_state` 发布 `PoseStamped`。
-位姿表达在成像的左相机光学坐标系中，frame_id 来自配置的左相机 `CameraInfo`；此节点的 marker 位姿求解不使用头部 VIO 里程计。
-
-## 当前主要参数
-
-以下为当前配置加载后、未额外覆盖时的值。标为“默认”的参数未写入 JSON，取自节点声明。
-
-| 参数 | 值 | 作用 |
-| --- | --- | --- |
-| `apriltag_family` | `tag16h5` | 标签码族 |
-| `marker_size_m` | `0.0525` | 配置中各标签边长，单位 m |
-| `image_scale` / `image_scale_override` | `2.0` / `1.0` | 当前有效检测倍率 1.0 |
-| `quad_decimate` / `quad_sigma` | `1.0` / `0.0` | 四边形检测缩放与预处理平滑参数 |
-| `refine_edges` / `decode_sharpening` | `true` / `0.25` | 边缘细化与编码采样锐化 |
-| `max_hamming` / `min_decision_margin` | `1` / `20.0` | 解码接受条件 |
-| `stereo_sync_slop_sec` | `0.005` | 左右图像同步容差，单位 s |
-| `max_left_error_gap_px` / `min_candidate_rotation_deg` | `0.25` / `10.0` | 触发单标签双目消歧的条件 |
-| `max_reprojection_error_px` | `1.0` | 最大重投影 RMS，单位 px |
-| `enable_outlier_rejection` / `max_single_marker_deviation_m` | `true` / `0.05`（默认） | 多标签异常检测 |
-| `enable_velocity_gate` | `true`（默认） | 开启运动幅度检查 |
-| `max_linear_speed_mps` / `max_angular_speed_degps` | `1.5` / `360.0` | 相对运动速度上限 |
-
-## AprilTag 底层源码索引
-
-以下是官方仓库的源码链接，供阅读检测算法；链接指向上游 `master`，不能据此认定本机安装库的具体版本。
-
-| 官方文件 | 关键函数 | 内容 |
-| --- | --- | --- |
-| [apriltag_quad_thresh.c][quad-source] | `threshold`、`connected_components`、`gradient_clusters`、`fit_quad` | 局部阈值、连通区域、边界聚类与四边形拟合 |
-| [apriltag.c][detector-source] | `apriltag_detector_detect`、`refine_edges`、`quad_decode`、`quick_decode_codeword` | 检测入口、角点细化、透视采样与码表匹配 |
-| [tag16h5.c][family-source] | `tag16h5_create` | 合法码字、16 位采样位置及码族参数 |
-
-[sync]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:191
-[callback]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:297
-[config-loader]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:259
-[camera-info]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:369
-[detect]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:378
-[apriltag-call]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:399
-[reprojection]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:434
-[stereo-residual]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:493
-[stereo-optimize]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:515
-[candidates]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:567
-[solve]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:596
-[process]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/src/marker_rig_pose_node.hpp:756
-[cmake]: /home/xuran/projects/umi_marker/tinynav-umi/tinynav_ros/CMakeLists.txt:44
-[quad-source]: https://github.com/AprilRobotics/apriltag/blob/master/apriltag_quad_thresh.c
-[detector-source]: https://github.com/AprilRobotics/apriltag/blob/master/apriltag.c
-[family-source]: https://github.com/AprilRobotics/apriltag/blob/master/tag16h5.c
+修改代码后运行 `just check` 和 `just test`。最近一次配置功能验证通过了 202 项离线测试；此前浏览器与真实数据验证的具体范围见 VALIDATION.md。

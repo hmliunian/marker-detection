@@ -1,6 +1,6 @@
 # UMI 主手与三维 action 筛选
 
-首轮独立实现：输入 MCAP 或包含一个 MCAP 的 ZIP，输出主控手、逐帧 XYZ、整条 episode 的筛选结论和本地 GUI。算法依据见 [README.md](README.md)，开发约束见 [PROJECT_BOUNDARIES.md](PROJECT_BOUNDARIES.md)。
+首轮独立实现：输入 MCAP 或包含一个 MCAP 的 ZIP，输出主控手、逐帧 XYZ、整条 episode 的筛选结论和本地 GUI。首次使用从 [README.md](README.md) 开始，算法依据见 [ALGORITHM.md](ALGORITHM.md)，开发约束见 [PROJECT_BOUNDARIES.md](PROJECT_BOUNDARIES.md)。
 
 ## 运行
 
@@ -75,6 +75,8 @@ just analyze /path/to/episode.mcap artifacts/experiment \
 
 复制 [screening.example.json](configs/screening.example.json) 调整 `activity`、`quality`、`pose` 三部分；未列字段沿用默认值。`--settings` 与 `--config` 等价，旧命令仍可使用。完整生效参数随每次结果保存。另可用 `--geometry /path/to/UMI.json` 指定几何，`--sidecar /path/to/collection.json` 指定旧格式采集 JSON。
 
+当前示例文件的 `quality.min_coverage` 为 `0.85`；程序未指定该字段时的默认值、下文 90% 示例及 2026-10-13 历史实验均为 `0.9`。仅修改示例文件不会影响未传 `--config` 的命令。
+
 仅配置缺失与覆盖率时，JSON 可以只包含以下内容：
 
 ```json
@@ -91,7 +93,7 @@ just analyze /path/to/episode.mcap artifacts/experiment \
 
 上述配置须显式传给 `--config` 才会加载；修改后使用新输出目录重新分析。结果的 `summary.missing_frames`、`summary.missing_frame_ratio`、`coverage` 和 `time_coverage` 可用于核对实际指标，`analysis.json` 的 `config.quality` 保存生效配置。空轨迹的缺失比例为 `null`，不会因此成为合格数据。
 
-| 参数 | 初始值与含义 |
+| 参数 | 程序默认值与含义（指定配置后以配置为准） |
 | --- | --- |
 | position 归一化参考 | 旧格式原始开度 `102`；CDR 米制开度 `0.102`，后者基于文档中的转换比例。旧原始值不擅自标成毫米。 |
 | 开度变化 | 稳健范围达到参考开度的 `8%`；持续部分开度也作为可能夹持的证据。 |

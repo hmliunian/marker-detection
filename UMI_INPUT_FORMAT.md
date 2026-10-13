@@ -60,7 +60,7 @@ UMI 的新旧格式变化为：旧 FlatBuffer 消息转换为 ROS2 CDR 消息，
 | `../dataset/gripper_data/<episode_id>_frames.csv` | 按头部左目视频帧对齐的 position 和时间差 |
 | `../dataset/gripper_state_review/tactile/frames/<episode_id>_frames.csv` | 逐帧 position、四个指面的触觉特征、可用性和时间差 |
 
-**当前导出 MP4 只有头部左目。** 可以用于该视角的 marker 检测；若复用 [README 中的双目位姿流程](README.md)，还需从原 MCAP 读取头部右目视频，并取得匹配的两目标定和时间戳。
+**当前导出 MP4 只有头部左目。** 可以用于该视角的 marker 检测；若复用 [参考算法中的双目位姿流程](ALGORITHM.md)，还需从原 MCAP 读取头部右目视频，并取得匹配的两目标定和时间戳。
 
 源目录包含多份 JSON。调用转换器时应显式指定原 MCAP 和 `<episode_id>.json`，不能把平台 `metadata.json`、任务 JSON 或分析 JSON 混作采集 sidecar；现有“目录内唯一 MCAP + 唯一 JSON”的自动发现规则不适用于这些多 JSON 目录。
 
